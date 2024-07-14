@@ -13,7 +13,7 @@ const gfx = @import("graphics.zig");
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
-    // const scroll_speed_mul: f64 = 2.5;
+    // const scroll_speed_mul: f80 = 2.5;
 
     const notes = try allocator.alloc(rhythm.Note, 8);
     defer allocator.free(notes);
@@ -74,8 +74,8 @@ pub fn main() !void {
         "hiiiii",
         sdl.SDL_WINDOWPOS_CENTERED,
         sdl.SDL_WINDOWPOS_CENTERED,
-        800,
-        600,
+        c.screen_width,
+        c.screen_height,
         sdl.SDL_WINDOW_RESIZABLE,
     );
     defer sdl.SDL_DestroyWindow(window);
@@ -87,14 +87,14 @@ pub fn main() !void {
 
     var quit = false;
 
-    var squareRect: sdl.SDL_Rect = sdl.SDL_Rect{
-        .w = @min(800, 600) / 2,
-        .h = @min(800, 600) / 2,
+    var note_rect: sdl.SDL_Rect = sdl.SDL_Rect{
+        .w = c.note_width,
+        .h = c.note_height,
     };
 
     // Square position: In the middle of the screen
-    squareRect.x = 800 / 2 - @divFloor(squareRect.w, 2);
-    squareRect.y = 600 / 2 - @divFloor(squareRect.h, 2);
+    note_rect.x = 800 / 2 - @divFloor(note_rect.w, 2);
+    note_rect.y = 600 / 2 - @divFloor(note_rect.h, 2);
 
     // Event loop
     while (!quit) {
@@ -104,21 +104,12 @@ pub fn main() !void {
                 quit = true;
             }
         }
-
-        // Initialize renderer color white for the background
         std.debug.assert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF) == 0);
-
-        // Clear screen
         std.debug.assert(sdl.SDL_RenderClear(renderer) == 0);
-
-        // Set renderer color red to draw the square
         std.debug.assert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
+        std.debug.assert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
 
-        // Draw filled square
-        std.debug.assert(sdl.SDL_RenderFillRect(renderer, &squareRect) == 0);
-
-        // Update screen
-        sdl.SDL_RenderPresent(renderer);
+        defer sdl.SDL_RenderPresent(renderer);
     }
 
     // var timer = try std.time.Timer.start();

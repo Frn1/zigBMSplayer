@@ -14,7 +14,7 @@ pub const NormalNoteType = union(NormalNoteTypeTag) {
     normal,
     /// Points of damage to do if the player hits this mine.
     /// Infinity means instant death.
-    mine: f64,
+    mine: f32,
     hidden,
 };
 
@@ -31,7 +31,7 @@ pub const NoteType = union(NoteTypeTag) {
 };
 
 pub const Note = struct {
-    beat: f64,
+    beat: f80,
     lane: u4,
     type: NoteType,
     keysound_id: u11,
@@ -44,10 +44,10 @@ pub const Note = struct {
 
 pub const SegmentTypeTag = enum { bpm, scroll, stop, barline };
 
-pub const SegmentType = union(SegmentTypeTag) { bpm: f64, scroll: f64, stop: f64, barline };
+pub const SegmentType = union(SegmentTypeTag) { bpm: f80, scroll: f80, stop: f80, barline };
 
 pub const Segment = struct {
-    beat: f64,
+    beat: f80,
     type: SegmentType,
 
     pub fn lessThanFn(ctx: void, lhs: @This(), rhs: @This()) bool {
@@ -69,7 +69,7 @@ pub const Conductor = struct {
 
     pub const Object = struct {
         obj_type: ObjectType,
-        obj_beat: f64,
+        obj_beat: f80,
         index: usize,
 
         fn lessThanFn(ctx: Conductor, lhs: @This(), rhs: @This()) bool {
@@ -122,8 +122,8 @@ pub const Conductor = struct {
         allocator.free(self.objects);
     }
 
-    pub fn calculateObjectTimesInSeconds(self: @This(), allocator: std.mem.Allocator) ![]f64 {
-        var output = try allocator.alloc(f64, self.objects.len);
+    pub fn calculateObjectTimesInSeconds(self: @This(), allocator: std.mem.Allocator) ![]f80 {
+        var output = try allocator.alloc(f80, self.objects.len);
 
         var state = ConductorState{};
 
@@ -136,7 +136,7 @@ pub const Conductor = struct {
         return output;
     }
 
-    pub fn calculateVisualBeats(self: @This(), allocator: std.mem.Allocator) ![]struct { visual_beat: f64, ln_tail_obj_index: ?usize = null } {
+    pub fn calculateVisualBeats(self: @This(), allocator: std.mem.Allocator) ![]struct { visual_beat: f80, ln_tail_obj_index: ?usize = null } {
         const ResultStruct = @typeInfo(
             @typeInfo(@typeInfo(@TypeOf(calculateVisualBeats)).Fn.return_type.?).ErrorUnion.payload,
         ).Pointer.child;
@@ -173,35 +173,35 @@ pub const ConductorState = struct {
     last_processed_object: usize = 0,
 
     /// Current seconds per beat (basically BPM)
-    current_sec_per_beat: f64 = std.math.nan(f64),
+    current_sec_per_beat: f80 = std.math.nan(f80),
     /// seconds to subtruct from the time
-    sec_offset: f64 = 0,
+    sec_offset: f80 = 0,
     /// beats to add when calculating current_beat
-    beat_offset: f64 = 0,
+    beat_offset: f80 = 0,
 
     /// beats to subtract when calculating visual position
-    visual_beats_offset: f64 = 0,
+    visual_beats_offset: f80 = 0,
     /// pos to add when calculating visual position
-    visual_pos_offset: f64 = 0,
+    visual_pos_offset: f80 = 0,
     /// current scroll multiplier (decimal number)
-    current_scroll_mul: f64 = 1.0,
+    current_scroll_mul: f80 = 1.0,
 
     /// The current beat, should always move foward and never go back in time
-    current_beat: f64 = 0,
+    current_beat: f80 = 0,
 
     /// Recalculate the current beat
-    pub inline fn updateCurrentbeat(self: *@This(), current_sec: f64) void {
+    pub inline fn updateCurrentbeat(self: *@This(), current_sec: f80) void {
         self.current_beat = self.calculateBeatFromSecondsApprox(current_sec);
     }
 
     // Calculate the visual position at that beat
-    pub inline fn calculateVisualPosition(self: @This(), current_beat: f64) f64 {
+    pub inline fn calculateVisualPosition(self: @This(), current_beat: f80) f80 {
         return (current_beat - self.visual_beats_offset) * self.current_scroll_mul + self.visual_pos_offset;
     }
 
     // Calculate the second from a time in beats approximately
     // (It can only guarantee accuracy until the next segment)
-    pub inline fn calculateSecondsFromBeatApprox(self: @This(), time_beats: f64) f64 {
+    pub inline fn calculateSecondsFromBeatApprox(self: @This(), time_beats: f80) f80 {
         if (std.math.isInf(self.current_sec_per_beat) or std.math.isNan(self.current_sec_per_beat)) {
             return self.sec_offset;
         }
@@ -214,7 +214,7 @@ pub const ConductorState = struct {
 
     // Calculate the beat from a time in seconds approximately
     // (It can only guarantee accuracy until the next segment)
-    pub inline fn calculateBeatFromSecondsApprox(self: @This(), time_secs: f64) f64 {
+    pub inline fn calculateBeatFromSecondsApprox(self: @This(), time_secs: f80) f80 {
         if (std.math.isInf(self.current_sec_per_beat) or std.math.isNan(self.current_sec_per_beat)) {
             return self.beat_offset;
         }
@@ -226,7 +226,7 @@ pub const ConductorState = struct {
     }
 
     /// Process events and update the conductor
-    pub fn process(self: *@This(), conductor: Conductor, current_sec: f64) void {
+    pub fn process(self: *@This(), conductor: Conductor, current_sec: f80) void {
         self.updateCurrentbeat(current_sec);
         for (conductor.objects[self.last_processed_object..], self.last_processed_object..) |object, i| {
             if (object.obj_beat > self.current_beat) {
