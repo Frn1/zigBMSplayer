@@ -51,17 +51,17 @@ pub fn main() !void {
     const song_folder_path = try std.fs.path.join(loading_allocator, &[_][]const u8{
         cwd_path,
         "test_chart",
-        "[Clue]Random",
-        // "[pi26]Hypersurface",
+        // "[Clue]Random",
+        "[pi26]Hypersurface",
         // "Anhedonia",
     });
 
     // Path for the chart file
     const chart_file_path = try std.fs.path.join(loading_allocator, &[_][]const u8{
         song_folder_path,
-        // "ass.bms",
-        "_random_s2.bms",
-        // "7MX.bms",
+        // "ass2.bms",
+        // "_random_s2.bms",
+        "7MX.bms",
         // "anhedonia_XYZ.bms",
     });
 
@@ -185,6 +185,7 @@ pub fn main() !void {
 
         defer sdl.SDL_RenderPresent(renderer);
         defer last_frame_end = sdl.SDL_GetPerformanceCounter();
+
         try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF) == 0);
         try std.testing.expect(sdl.SDL_RenderClear(renderer) == 0);
 
@@ -197,7 +198,7 @@ pub fn main() !void {
                 continue;
             }
 
-            if (object.obj_type == rhythm.Conductor.ObjectType.Segment) {
+            if (object.obj_type == .Segment) {
                 if (render_y > c.screen_height + c.note_height) {
                     continue;
                 }
@@ -207,8 +208,8 @@ pub fn main() !void {
 
                 const segment = conductor.segments[conductor.objects[i].index];
                 switch (segment.type) {
-                    rhythm.SegmentTypeTag.barline => {
-                        try std.testing.expect(sdl.SDL_RenderDrawLine(renderer, 0, render_y, c.note_width * 9, render_y) == 0);
+                    .barline => {
+                        try std.testing.expect(sdl.SDL_RenderDrawLine(renderer, 0, render_y, c.note_width * 8, render_y) == 0);
                     },
                     else => {},
                 }
@@ -227,16 +228,37 @@ pub fn main() !void {
             if (object.obj_type == rhythm.Conductor.ObjectType.Note) {
                 const note = conductor.notes[conductor.objects[i].index];
 
-                var render_x = @as(i32, note.lane);
+                const lane = switch (note.lane) {
+                    0...4 => note.lane + 1, // First 5 keys for 5k+1
+                    5 => 0, // Scratch
+                    else => note.lane - 1, // the other extra lanes for 7k+1 (i do not know why its like this... but i didnt make BMS so i dont wanna hear it)
+                };
+
+                var render_x = @as(i32, lane);
                 render_x *= c.note_width;
 
                 // change color to red
                 try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
 
                 switch (note.type) {
-                    rhythm.NoteTypeTag.normal => {
+                    .normal => {
                         if (render_y > c.screen_height + c.note_height) {
                             continue;
+                        }
+
+                        switch (note.type.normal) {
+                            .normal => {
+                                // change color to red
+                                try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
+                            },
+                            .mine => {
+                                // change color to yellow
+                                try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0x00, 0xFF) == 0);
+                            },
+                            .hidden => {
+                                // change color to blue
+                                try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0xFF, 0xFF) == 0);
+                            },
                         }
 
                         const note_rect: sdl.SDL_Rect = sdl.SDL_Rect{
@@ -247,7 +269,7 @@ pub fn main() !void {
                         };
                         try std.testing.expect(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
                     },
-                    rhythm.NoteTypeTag.ln_head => {
+                    .ln_head => {
                         var tail_render_y = @as(i32, @intFromFloat(
                             (visual_beat - positions[position.ln_tail_obj_index.?].visual_beat) * scroll_speed_mul * c.beat_height,
                         ));
@@ -270,7 +292,7 @@ pub fn main() !void {
 
         // change color to white
         try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
-        try std.testing.expect(sdl.SDL_RenderDrawLine(renderer, 0, c.judgement_line_y, c.note_width * 9, c.judgement_line_y) == 0);
+        try std.testing.expect(sdl.SDL_RenderDrawLine(renderer, 0, c.judgement_line_y, c.note_width * 8, c.judgement_line_y) == 0);
 
         // draw text used for debuging
         const text: [:0]u8 = try frame_allocator.allocSentinel(u8, 64, 0);
