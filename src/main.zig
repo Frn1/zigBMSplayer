@@ -45,8 +45,8 @@ pub fn main() !void {
     const song_folder_path = try std.fs.path.join(loading_allocator, &[_][]const u8{
         cwdPath,
         "test_chart",
-        // "[Clue]Random",
-        "[pi26]Hypersurface",
+        "[Clue]Random",
+        // "[pi26]Hypersurface",
         // "Anhedonia",
     });
 
@@ -54,8 +54,8 @@ pub fn main() !void {
     const chart_file_path = try std.fs.path.join(loading_allocator, &[_][]const u8{
         song_folder_path,
         // "ass2.bms",
-        // "_random_s2.bms",
-        "7MX.bms",
+        "_random_s2.bms",
+        // "7MX.bms",
         // "anhedonia_XYZ.bms",
     });
 
@@ -145,20 +145,23 @@ pub fn main() !void {
         const current_performance_ticks = sdl.SDL_GetPerformanceCounter() - start_tick;
         const current_time: f80 = @as(f80, @floatFromInt(current_performance_ticks)) / performance_frequency;
 
-        for (state.last_processed_object..conductor.objects.len) |i| {
+        // update game state
+        const last_object_processed_before = state.last_processed_object;
+        state.process(conductor, current_time);
+        const last_object_processed_after = state.last_processed_object;
+
+        const visual_beat = state.calculateVisualPosition(state.current_beat);
+
+        for (last_object_processed_before..last_object_processed_after) |i| {
             const object = conductor.objects[i];
-            const time = times[i];
             if (object.obj_type == rhythm.Conductor.ObjectType.Note) {
-                if (current_time >= time) {
-                    const keysound_id = conductor.notes[object.index].keysound_id;
+                const keysound_id = conductor.notes[object.index].keysound_id - 1;
+                const keysound = conductor.keysounds[keysound_id];
+                if (keysound != null) {
                     std.debug.assert(sdl.Mix_PlayChannel(keysound_id, conductor.keysounds[keysound_id], 0) == keysound_id);
                 }
             }
         }
-
-        // update game state
-        state.process(conductor, current_time);
-        const visual_beat = state.calculateVisualPosition(state.current_beat);
 
         // handle events
         var event: sdl.SDL_Event = undefined;

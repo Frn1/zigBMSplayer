@@ -344,15 +344,9 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                             const index = try std.fmt.parseInt(u11, current_key[3..5], 36) - 1;
 
                             const filenameCopy = try arena_allocator.alloc(u8, current_value.len);
+                            defer arena_allocator.free(filenameCopy);
                             @memcpy(filenameCopy, current_value);
 
-                            // keysoundThreads[index] = std.Thread.spawn(std.Thread.SpawnConfig{ .allocator = allocator }, loadKeysound, .{
-                            //     allocator,
-                            //     filenameCopy,
-                            //     open_directory,
-                            //     directory,
-                            //     &output.keysounds[index],
-                            // }) catch ass: {
                             try loadKeysound(
                                 arena_allocator,
                                 filenameCopy,
@@ -360,9 +354,6 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                                 directory,
                                 &output.keysounds[index],
                             );
-                            arena_allocator.free(filenameCopy);
-                            //     break :ass null;
-                            // };
                         }
                     }
                     current_step = Steps.SkipUntilHashtag;
@@ -527,7 +518,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                     output.notes[output.notes.len - 1].type = rhythm.NoteType{
                         .ln_head = 0,
                     };
-                    const new_node = try allocator.create(ActiveLnLanesType.Node);
+                    const new_node = try arena_allocator.create(ActiveLnLanesType.Node);
                     new_node.prev = active_ln_lanes.last;
                     new_node.data = .{
                         .lane = output.notes[output.notes.len - 1].lane,
