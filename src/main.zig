@@ -11,65 +11,74 @@ const formats = @import("formats.zig");
 const gfx = @import("graphics.zig");
 
 pub fn main() !void {
-    const allocator = std.heap.page_allocator;
+    // Main allocator we use
+    const main_allocator = std.heap.page_allocator;
 
     // const scroll_speed_mul: f80 = 2.5;
 
-    const notes = try allocator.alloc(rhythm.Note, 8);
-    defer allocator.free(notes);
+    var loading_arena = std.heap.ArenaAllocator.init(main_allocator);
+    // Yes we already do this after compiling the charts but
+    // its better to make sure to free everything in the loading arena
+    defer loading_arena.deinit();
+    // Allocator used when loading files
+    const loading_allocator = loading_arena.allocator();
 
-    const cwdPath = try std.process.getCwdAlloc(allocator);
-    defer allocator.free(cwdPath);
+    // Current working directory path
+    const cwdPath = try std.process.getCwdAlloc(loading_allocator);
 
-    const chart_folder_path = try std.fs.path.join(allocator, &[_][]const u8{
+    // Path for the song folder
+    const song_folder_path = try std.fs.path.join(loading_allocator, &[_][]const u8{
         cwdPath,
         "test_chart",
         "[Clue]Random",
         // "[pi26]Hypersurface",
         // "Anhedonia",
     });
-    defer allocator.free(chart_folder_path);
 
-    const chart_file_path = try std.fs.path.join(allocator, &[_][]const u8{
-        chart_folder_path,
+    // Path for the chart file
+    const chart_file_path = try std.fs.path.join(loading_allocator, &[_][]const u8{
+        song_folder_path,
         // "ass2.bms",
         "_random_s2.bms",
         // "7MX.bms",
         // "anhedonia_XYZ.bms",
     });
-    defer allocator.free(chart_file_path);
 
     const chart_file = try std.fs.openFileAbsolute(chart_file_path, std.fs.File.OpenFlags{});
     defer chart_file.close();
 
-    var timing_group = try formats.compileBMS(
-        allocator,
-        chart_folder_path,
+    // TODO: Multiple conductors/timing groups???
+    var conductor = try formats.compileBMS(
+        main_allocator,
+        song_folder_path,
         try chart_file.readToEndAllocOptions(
-            allocator,
+            loading_allocator,
             2048 * 2048,
             64 * 2048,
             1,
             0,
         ),
     );
-    defer for (timing_group.keysounds) |sound| {
+    // Make sure to unload the keysounds
+    defer for (conductor.keysounds) |sound| {
         sdl.Mix_FreeMusic(sound);
     };
 
-    try timing_group.createObjects(allocator);
-    defer timing_group.deleteObjects(allocator);
+    // Free everything in the loading arena
+    loading_arena.deinit();
 
-    const times = try timing_group.calculateObjectTimesInSeconds(allocator);
-    defer allocator.free(times);
-    const positions = try timing_group.calculateVisualBeats(allocator);
-    defer allocator.free(positions);
+    // Create objects for the conductor
+    try conductor.createObjects(main_allocator);
+    defer conductor.deleteObjects(main_allocator);
 
-    const text1: [:0]u8 = try allocator.allocSentinel(u8, 64, 0);
-    const text2: [:0]u8 = try allocator.allocSentinel(u8, 64, 0);
-    defer allocator.free(text1);
-    defer allocator.free(text2);
+    // Calculate time we hit every object
+    const times = try conductor.calculateObjectTimesInSeconds(main_allocator);
+    defer main_allocator.free(times);
+    // Calculate position we hit every object
+    const positions = try conductor.calculateVisualBeats(main_allocator);
+    defer main_allocator.free(positions);
 
+    // SDL window
     const window: ?*sdl.SDL_Window = sdl.SDL_CreateWindow(
         "hiiiii",
         sdl.SDL_WINDOWPOS_CENTERED,
@@ -80,6 +89,7 @@ pub fn main() !void {
     );
     defer sdl.SDL_DestroyWindow(window);
 
+    // SDL renderer
     const renderer: ?*sdl.SDL_Renderer = sdl.SDL_CreateRenderer(window, -1, sdl.SDL_RENDERER_ACCELERATED);
     defer sdl.SDL_DestroyRenderer(renderer);
 
@@ -87,17 +97,28 @@ pub fn main() !void {
 
     var quit = false;
 
+    // Rect used for the notes
     var note_rect: sdl.SDL_Rect = sdl.SDL_Rect{
         .w = c.note_width,
         .h = c.note_height,
     };
 
     // Square position: In the middle of the screen
-    note_rect.x = 800 / 2 - @divFloor(note_rect.w, 2);
-    note_rect.y = 600 / 2 - @divFloor(note_rect.h, 2);
+    // note_rect.x = 800 / 2 - @divFloor(note_rect.w, 2);
+    // note_rect.y = 600 / 2 - @divFloor(note_rect.h, 2);
 
     // Event loop
     while (!quit) {
+        var frame_arena = std.heap.ArenaAllocator.init(main_allocator);
+        defer frame_arena.deinit();
+        // const frame_allocator = frame_arena.allocator();
+
+        const text1: [:0]u8 = try frame_arena.allocSentinel(u8, 64, 0);
+        const text2: [:0]u8 = try frame_arena.allocSentinel(u8, 64, 0);
+
+        _ = text1;
+        _ = text2;
+
         var event: sdl.SDL_Event = undefined;
         while (sdl.SDL_PollEvent(&event)) {
             if (event.type == sdl.SDL_QUIT) {
