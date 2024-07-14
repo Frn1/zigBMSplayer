@@ -22,21 +22,21 @@ pub fn main() !void {
     }
 
     // init sdl
-    std.debug.assert(
+    try std.testing.expect(
         sdl.SDL_Init(
             @intCast(sdl.SDL_INIT_TIMER | sdl.SDL_INIT_AUDIO | sdl.SDL_INIT_VIDEO | sdl.SDL_INIT_EVENTS),
         ) == 0,
     );
     defer sdl.SDL_Quit();
 
-    std.debug.assert(sdl.TTF_Init() == 0);
+    try std.testing.expect(sdl.TTF_Init() == 0);
     defer sdl.TTF_Quit();
 
-    std.debug.assert(sdl.Mix_Init(@intCast(sdl.MIX_INIT_OGG)) != 0);
+    try std.testing.expect(sdl.Mix_Init(@intCast(sdl.MIX_INIT_OGG)) != 0);
     defer sdl.Mix_Quit();
-    std.debug.assert(sdl.Mix_OpenAudio(48000, sdl.MIX_DEFAULT_FORMAT, 2, 2048) == 0);
+    try std.testing.expect(sdl.Mix_OpenAudio(48000, sdl.MIX_DEFAULT_FORMAT, 2, 2048) == 0);
     defer sdl.Mix_CloseAudio();
-    std.debug.assert(sdl.Mix_AllocateChannels(1295) == 1295);
+    try std.testing.expect(sdl.Mix_AllocateChannels(1295) == 1295);
 
     var scroll_speed_mul: f80 = 2.0;
 
@@ -164,7 +164,7 @@ pub fn main() !void {
                 const keysound_id = conductor.notes[object.index].keysound_id - 1;
                 const keysound = conductor.keysounds[keysound_id];
                 if (keysound != null) {
-                    std.debug.assert(sdl.Mix_PlayChannel(keysound_id, conductor.keysounds[keysound_id], 0) == keysound_id);
+                    try std.testing.expect(sdl.Mix_PlayChannel(keysound_id, conductor.keysounds[keysound_id], 0) == keysound_id);
                 }
             }
         }
@@ -185,9 +185,10 @@ pub fn main() !void {
 
         defer sdl.SDL_RenderPresent(renderer);
         defer last_frame_end = sdl.SDL_GetPerformanceCounter();
-        std.debug.assert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF) == 0);
-        std.debug.assert(sdl.SDL_RenderClear(renderer) == 0);
+        try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF) == 0);
+        try std.testing.expect(sdl.SDL_RenderClear(renderer) == 0);
 
+        // Draw barlines BEFORE notes so they appear behind the notes
         for (conductor.objects, positions, 0..) |object, position, i| {
             var render_y = @as(i32, @intFromFloat((visual_beat - position.visual_beat) * scroll_speed_mul * c.beat_height));
             render_y += c.judgement_line_y;
@@ -202,18 +203,19 @@ pub fn main() !void {
                 }
 
                 // change color to white
-                std.debug.assert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
+                try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
 
                 const segment = conductor.segments[conductor.objects[i].index];
                 switch (segment.type) {
                     rhythm.SegmentTypeTag.barline => {
-                        std.debug.assert(sdl.SDL_RenderDrawLine(renderer, 0, render_y, c.note_width * 9, render_y) == 0);
+                        try std.testing.expect(sdl.SDL_RenderDrawLine(renderer, 0, render_y, c.note_width * 9, render_y) == 0);
                     },
                     else => {},
                 }
             }
         }
 
+        // And NOW we draw the notes
         for (conductor.objects, positions, 0..) |object, position, i| {
             var render_y = @as(i32, @intFromFloat((visual_beat - position.visual_beat) * scroll_speed_mul * c.beat_height));
             render_y += c.judgement_line_y;
@@ -229,7 +231,7 @@ pub fn main() !void {
                 render_x *= c.note_width;
 
                 // change color to red
-                std.debug.assert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
+                try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
 
                 switch (note.type) {
                     rhythm.NoteTypeTag.normal => {
@@ -243,7 +245,7 @@ pub fn main() !void {
                             .w = c.note_width,
                             .h = c.note_height,
                         };
-                        std.debug.assert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
+                        try std.testing.expect(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
                     },
                     rhythm.NoteTypeTag.ln_head => {
                         var tail_render_y = @as(i32, @intFromFloat(
@@ -259,7 +261,7 @@ pub fn main() !void {
                             .w = c.note_width,
                             .h = render_y - tail_render_y,
                         };
-                        std.debug.assert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
+                        try std.testing.expect(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
                     },
                     else => {},
                 }
@@ -267,26 +269,26 @@ pub fn main() !void {
         }
 
         // change color to white
-        std.debug.assert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
-        std.debug.assert(sdl.SDL_RenderDrawLine(renderer, 0, c.judgement_line_y, c.note_width * 9, c.judgement_line_y) == 0);
+        try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
+        try std.testing.expect(sdl.SDL_RenderDrawLine(renderer, 0, c.judgement_line_y, c.note_width * 9, c.judgement_line_y) == 0);
 
         // draw text used for debuging
         const text: [:0]u8 = try frame_allocator.allocSentinel(u8, 64, 0);
 
         _ = try std.fmt.bufPrint(text, "B   {d:.3}   {d:.3}\u{0000}", .{ state.current_beat, 60.0 / state.current_sec_per_beat });
 
-        gfx.draw_text(text, renderer, 0, 24 * 0, debug_font);
+        try gfx.draw_text(text, renderer, 0, 24 * 0, debug_font);
 
         _ = try std.fmt.bufPrint(text, "VB  {d:.3}  x{d:.3}\u{0000}", .{ visual_beat, state.current_scroll_mul });
-        gfx.draw_text(text, renderer, 0, 24 * 1, debug_font);
+        try gfx.draw_text(text, renderer, 0, 24 * 1, debug_font);
 
         _ = try std.fmt.bufPrint(text, "FPS {d:.3}\u{0000}", .{performance_frequency / @as(
             f80,
             @floatFromInt(sdl.SDL_GetPerformanceCounter() - last_frame_end),
         )});
-        gfx.draw_text(text, renderer, 0, 24 * 2, debug_font);
+        try gfx.draw_text(text, renderer, 0, 24 * 2, debug_font);
 
         _ = try std.fmt.bufPrint(text, "SC  {d:.1}\u{0000}", .{scroll_speed_mul});
-        gfx.draw_text(text, renderer, 0, 24 * 3, debug_font);
+        try gfx.draw_text(text, renderer, 0, 24 * 3, debug_font);
     }
 }
