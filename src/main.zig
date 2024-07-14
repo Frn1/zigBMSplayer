@@ -111,7 +111,7 @@ pub fn main() !void {
     ).?;
     defer sdl.SDL_DestroyRenderer(renderer);
 
-    const debug_font: *sdl.TTF_Font = sdl.TTF_OpenFont("RobotoMono.ttf", 24).?;
+    const debug_font: *sdl.TTF_Font = sdl.TTF_OpenFont("fonts/RobotoMono.ttf", 24).?;
     defer sdl.TTF_CloseFont(debug_font);
 
     var state = rhythm.ConductorState{};
