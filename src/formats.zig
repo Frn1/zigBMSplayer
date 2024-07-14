@@ -131,7 +131,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
 
     const RandomValue = struct {
         value: u32,
-        skipping: bool = false,
+        skipping: bool = true,
         is_switch: bool = false,
         already_matched: bool = false,
     };
@@ -186,47 +186,53 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                 }
             },
             Steps.ParseKey => {
-                const maybe_skip = if (random_stack.len != 0) (random_stack.first.?.data.skipping) else false;
+                const maybe_skip = if (random_stack.len > 0) (random_stack.first.?.data.skipping) else false;
 
-                if (char == ':' and maybe_skip == false) {
+                if (char == ':') {
                     parsing_channel = true;
-                    current_step = Steps.ParseValue;
+                    if (maybe_skip) {
+                        current_step = Steps.SkipUntilHashtag;
+                    } else {
+                        current_step = Steps.ParseValue;
+                    }
                     continue;
                 } else if (std.ascii.isWhitespace(char) or std.ascii.isControl(char)) {
+                    current_step = Steps.SkipUntilHashtag;
+
                     const is_skip = std.mem.eql(u8, current_key, "SKIP");
-                    if (maybe_skip or is_skip) {
+                    const is_else = std.mem.eql(u8, current_key, "ELSE");
+                    const is_endif = std.mem.eql(u8, current_key, "ENDIF");
+                    if (maybe_skip or is_skip or (maybe_skip == false and is_endif) or (maybe_skip == true and is_else)) {
                         const is_if = std.mem.eql(u8, current_key, "IF");
                         const is_case = std.mem.eql(u8, current_key, "CASE");
-                        const is_else = std.mem.eql(u8, current_key, "ELSE");
                         const is_def = std.mem.eql(u8, current_key, "DEF");
-                        const is_endif = std.mem.eql(u8, current_key, "ENDIF");
                         const is_endsw = std.mem.eql(u8, current_key, "ENDSW");
                         const is_endrandom = std.mem.eql(u8, current_key, "ENDRANDOM");
 
                         if (!is_if and !is_case and !is_else and !is_skip and !is_def and !is_endif and !is_endsw and !is_endrandom) {
-                            current_step = Steps.SkipUntilHashtag;
                             continue;
                         }
 
                         const top_random_stack = random_stack.first.?;
                         if (top_random_stack.data.is_switch) {
                             if (is_skip and !top_random_stack.data.skipping and top_random_stack.data.already_matched) {
-                                top_random_stack.data.skipping = true;
+                                top_random_stack.*.data.skipping = true;
                             } else if (is_def and top_random_stack.data.skipping and !top_random_stack.data.already_matched) {
-                                top_random_stack.data.skipping = false;
+                                top_random_stack.*.data.skipping = false;
                             } else if (is_endsw) {
                                 arena_allocator.destroy(random_stack.pop().?);
                             }
                         } else {
                             if (is_else) {
-                                top_random_stack.data.skipping = !top_random_stack.data.skipping;
+                                top_random_stack.*.data.skipping = !top_random_stack.data.skipping;
                             } else if (is_endif) {
-                                top_random_stack.data.skipping = false;
+                                top_random_stack.*.data.skipping = true;
                             } else if (is_endrandom) {
                                 arena_allocator.destroy(random_stack.pop().?);
                             }
                         }
                     }
+
                     if (char == ' ') {
                         parsing_channel = false;
                         current_step = Steps.ParseValue;
@@ -242,7 +248,13 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                 if (char == '\r') { // Fuck you windows and your carrage returns 🖕
                     continue;
                 } else if (char == '\n' or char == 0) {
+                    current_step = Steps.SkipUntilHashtag;
+                    const maybe_skip = if (random_stack.len > 0) (random_stack.first.?.data.skipping) else false;
                     if (parsing_channel) {
+                        if (maybe_skip) {
+                            continue;
+                        }
+
                         const measure = try std.fmt.parseInt(u10, current_key[0..3], 10);
                         const channel = try std.fmt.parseInt(u11, current_key[3..5], 36);
 
@@ -272,15 +284,13 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                             },
                         }
                     } else {
-                        const maybe_skip = if (random_stack.len != 0) (random_stack.first.?.data.skipping) else false;
-                        if (maybe_skip) {
+                        const is_random = std.mem.eql(u8, current_key, "RANDOM");
+                        if ((maybe_skip == false and is_random) or maybe_skip) {
                             const is_if = std.mem.eql(u8, current_key, "IF");
-                            const is_random = std.mem.eql(u8, current_key, "RANDOM");
                             const is_case = std.mem.eql(u8, current_key, "CASE");
                             const is_switch = std.mem.eql(u8, current_key, "SWITCH");
 
                             if (!is_if and !is_random and !is_case and !is_switch) {
-                                current_step = Steps.SkipUntilHashtag;
                                 continue;
                             }
 
@@ -290,9 +300,12 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                                     RandomStack.Node{
                                     .prev = random_stack.last,
                                     .data = RandomValue{
-                                        .value = 3,
+                                        .value = std.Random.uintLessThan(
+                                            std.crypto.random,
+                                            u32,
+                                            try std.fmt.parseInt(u32, current_value, 10),
+                                        ) + 1,
                                         .is_switch = true,
-                                        .skipping = true,
                                     },
                                 };
                                 random_stack.append(new_node);
@@ -307,7 +320,6 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                                             u32,
                                             try std.fmt.parseInt(u32, current_value, 10),
                                         ) + 1,
-                                        .skipping = false,
                                     },
                                 };
                                 random_stack.append(new_node);
@@ -316,47 +328,53 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                                 if (top_random_stack.data.is_switch) {
                                     if (is_case and top_random_stack.data.skipping and !top_random_stack.data.already_matched) {
                                         const value_to_match = try std.fmt.parseInt(u32, current_value, 10);
-                                        if (top_random_stack.data.value == value_to_match) {
-                                            top_random_stack.data.skipping = false;
-                                            top_random_stack.data.already_matched = true;
+                                        if (top_random_stack.*.data.value == value_to_match) {
+                                            top_random_stack.*.data.skipping = false;
+                                            top_random_stack.*.data.already_matched = true;
                                         }
                                     }
                                 } else if (is_if) {
-                                    top_random_stack.data.skipping = top_random_stack.data.value != try std.fmt.parseInt(u32, current_value, 10);
+                                    const value_to_match = try std.fmt.parseInt(u32, current_value, 10);
+                                    if (top_random_stack.data.value == value_to_match and top_random_stack.data.already_matched == false) {
+                                        top_random_stack.*.data.skipping = false;
+                                        top_random_stack.*.data.already_matched = true;
+                                    } else {
+                                        top_random_stack.*.data.skipping = true;
+                                    }
                                 }
                             }
-                        }
-                        if (std.mem.eql(u8, current_key, "BPM")) {
-                            initial_bpm = try std.fmt.parseFloat(f64, current_value);
-                        } else if (std.mem.startsWith(u8, current_key, "BPM")) {
-                            const key = try std.fmt.parseInt(u11, current_key[3..5], 36);
-                            const bpm = try std.fmt.parseFloat(f64, current_value);
-                            try bpm_values.put(key, bpm);
-                        } else if (std.mem.startsWith(u8, current_key, "STOP")) {
-                            const key = try std.fmt.parseInt(u11, current_key[4..6], 36);
-                            const stopped_time = try std.fmt.parseInt(u32, current_value, 10); // 1 unit corresponds 1/192 of measure with 4/4 meter
-                            try stop_values.put(key, stopped_time);
-                        } else if (std.mem.startsWith(u8, current_key, "SCROLL")) {
-                            const key = try std.fmt.parseInt(u11, current_key[6..8], 36);
-                            const new_scroll = try std.fmt.parseFloat(f64, current_value);
-                            try scroll_values.put(key, new_scroll);
-                        } else if (std.mem.startsWith(u8, current_key, "WAV")) {
-                            const index = try std.fmt.parseInt(u11, current_key[3..5], 36) - 1;
+                        } else {
+                            if (std.mem.eql(u8, current_key, "BPM")) {
+                                initial_bpm = try std.fmt.parseFloat(f64, current_value);
+                            } else if (std.mem.startsWith(u8, current_key, "BPM")) {
+                                const key = try std.fmt.parseInt(u11, current_key[3..5], 36);
+                                const bpm = try std.fmt.parseFloat(f64, current_value);
+                                try bpm_values.put(key, bpm);
+                            } else if (std.mem.startsWith(u8, current_key, "STOP")) {
+                                const key = try std.fmt.parseInt(u11, current_key[4..6], 36);
+                                const stopped_time = try std.fmt.parseInt(u32, current_value, 10); // 1 unit corresponds 1/192 of measure with 4/4 meter
+                                try stop_values.put(key, stopped_time);
+                            } else if (std.mem.startsWith(u8, current_key, "SCROLL")) {
+                                const key = try std.fmt.parseInt(u11, current_key[6..8], 36);
+                                const new_scroll = try std.fmt.parseFloat(f64, current_value);
+                                try scroll_values.put(key, new_scroll);
+                            } else if (std.mem.startsWith(u8, current_key, "WAV")) {
+                                const index = try std.fmt.parseInt(u11, current_key[3..5], 36) - 1;
 
-                            const filenameCopy = try arena_allocator.alloc(u8, current_value.len);
-                            defer arena_allocator.free(filenameCopy);
-                            @memcpy(filenameCopy, current_value);
+                                const filenameCopy = try arena_allocator.alloc(u8, current_value.len);
+                                defer arena_allocator.free(filenameCopy);
+                                @memcpy(filenameCopy, current_value);
 
-                            try loadKeysound(
-                                arena_allocator,
-                                filenameCopy,
-                                open_directory,
-                                directory,
-                                &output.keysounds[index],
-                            );
+                                try loadKeysound(
+                                    arena_allocator,
+                                    filenameCopy,
+                                    open_directory,
+                                    directory,
+                                    &output.keysounds[index],
+                                );
+                            }
                         }
                     }
-                    current_step = Steps.SkipUntilHashtag;
                     continue;
                 }
                 current_value = try arena_allocator.realloc(current_value, current_value.len + 1);

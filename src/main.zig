@@ -13,7 +13,13 @@ const gfx = @import("graphics.zig");
 
 pub fn main() !void {
     // Main allocator we use
-    const main_allocator = std.heap.page_allocator;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const main_allocator = gpa.allocator();
+    defer {
+        const deinit_status = gpa.deinit();
+        //fail test; can't try in defer as defer is executed after we return
+        if (deinit_status == .leak) @panic("TEST FAIL");
+    }
 
     // init sdl
     std.debug.assert(
@@ -35,15 +41,15 @@ pub fn main() !void {
     const scroll_speed_mul: f80 = 2.5;
 
     var loading_arena = std.heap.ArenaAllocator.init(main_allocator);
-    // Allocator used when loading files
+    // Allocator used when loading stuff that wont stay after loading
     const loading_allocator = loading_arena.allocator();
 
     // Current working directory path
-    const cwdPath = try std.process.getCwdAlloc(loading_allocator);
+    const cwd_path = try std.process.getCwdAlloc(loading_allocator);
 
     // Path for the song folder
     const song_folder_path = try std.fs.path.join(loading_allocator, &[_][]const u8{
-        cwdPath,
+        cwd_path,
         "test_chart",
         "[Clue]Random",
         // "[pi26]Hypersurface",
@@ -53,7 +59,7 @@ pub fn main() !void {
     // Path for the chart file
     const chart_file_path = try std.fs.path.join(loading_allocator, &[_][]const u8{
         song_folder_path,
-        // "ass2.bms",
+        // "ass.bms",
         "_random_s2.bms",
         // "7MX.bms",
         // "anhedonia_XYZ.bms",
@@ -78,6 +84,9 @@ pub fn main() !void {
     defer for (conductor.keysounds) |sound| {
         sdl.Mix_FreeChunk(sound);
     };
+    // Make sure to free the chart data
+    defer main_allocator.free(conductor.notes);
+    defer main_allocator.free(conductor.segments);
 
     // Free everything in the loading arena
     // YEAH I KNOW I should be doing this with defer
@@ -97,7 +106,7 @@ pub fn main() !void {
 
     // SDL window
     const window: *sdl.SDL_Window = sdl.SDL_CreateWindow(
-        "hiiiii",
+        "Zig BMS Player",
         sdl.SDL_WINDOWPOS_CENTERED,
         sdl.SDL_WINDOWPOS_CENTERED,
         c.screen_width,
