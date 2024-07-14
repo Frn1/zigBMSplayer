@@ -64,7 +64,7 @@ pub const Conductor = struct {
     objects: []Object = undefined,
 
     // 1295 = ZZ = max value in BMS
-    keysounds: [1295]?*sdl.Mix_Music = .{null} ** 1295,
+    keysounds: [1295]?*sdl.Mix_Chunk = .{null} ** 1295,
 
     pub const ObjectType = enum { Note, Segment };
 

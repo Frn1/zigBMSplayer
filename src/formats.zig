@@ -17,52 +17,52 @@ fn resetCurrentKeyValue(allocator: std.mem.Allocator, current_key: *[]u8, curren
     current_value.* = try allocator.alloc(u8, 0);
 }
 
-fn loadKeysound(allocator: std.mem.Allocator, filename: []u8, directory: std.fs.Dir, directory_path: []u8, output: *?*sdl.Mix_Music) !void {
+fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []u8, directory: std.fs.Dir, directory_path: []u8, output: *?*sdl.Mix_Chunk) !void {
     const filename_stem = std.fs.path.stem(filename);
     const filename_dirname = std.fs.path.dirname(filename);
 
     const filename_no_ext = if (filename_dirname == null)
-        try allocator.alloc(u8, filename_stem.len)
+        try arena_allocator.alloc(u8, filename_stem.len)
     else
         try std.fs.path.join(
-            allocator,
+            arena_allocator,
             &[_][]const u8{
                 filename_dirname.?,
                 filename_stem,
             },
         );
-    defer allocator.free(filename_no_ext);
+    defer arena_allocator.free(filename_no_ext);
     if (filename_dirname == null) {
         @memcpy(filename_no_ext, filename_stem);
     }
 
-    const filename_ogg = try std.mem.join(allocator, ".", &[_][]const u8{
+    const filename_ogg = try std.mem.join(arena_allocator, ".", &[_][]const u8{
         filename_no_ext,
         "ogg",
     });
-    defer allocator.free(filename_ogg);
-    const filename_wav = try std.mem.join(allocator, ".", &[_][]const u8{
+    defer arena_allocator.free(filename_ogg);
+    const filename_wav = try std.mem.join(arena_allocator, ".", &[_][]const u8{
         filename_no_ext,
         "wav",
     });
-    defer allocator.free(filename_wav);
+    defer arena_allocator.free(filename_wav);
 
     if (directory.access(filename, std.fs.File.OpenFlags{})) {
-        const path = try std.fs.path.joinZ(allocator, &[_][]const u8{ directory_path, filename });
-        defer allocator.free(path);
-        output.* = sdl.Mix_LoadMUS(path);
+        const path = try std.fs.path.joinZ(arena_allocator, &[_][]const u8{ directory_path, filename });
+        defer arena_allocator.free(path);
+        output.* = sdl.Mix_LoadWAV(path);
     } else |err| switch (err) {
         error.FileNotFound => {
             if (directory.access(filename_ogg, std.fs.File.OpenFlags{})) {
-                const path = try std.fs.path.joinZ(allocator, &[_][]const u8{ directory_path, filename_ogg });
-                defer allocator.free(path);
-                output.* = sdl.Mix_LoadMUS(path);
+                const path = try std.fs.path.joinZ(arena_allocator, &[_][]const u8{ directory_path, filename_ogg });
+                defer arena_allocator.free(path);
+                output.* = sdl.Mix_LoadWAV(path);
             } else |err2| switch (err2) {
                 error.FileNotFound => {
                     if (directory.access(filename_wav, std.fs.File.OpenFlags{})) {
-                        const path = try std.fs.path.joinZ(allocator, &[_][]const u8{ directory_path, filename_wav });
-                        defer allocator.free(path);
-                        output.* = sdl.Mix_LoadMUS(path);
+                        const path = try std.fs.path.joinZ(arena_allocator, &[_][]const u8{ directory_path, filename_wav });
+                        defer arena_allocator.free(path);
+                        output.* = sdl.Mix_LoadWAV(path);
                     } else |err3| switch (err3) {
                         error.FileNotFound => {
                             std.debug.print("Missing keysound {s}\n", .{filename_no_ext});
@@ -78,10 +78,10 @@ fn loadKeysound(allocator: std.mem.Allocator, filename: []u8, directory: std.fs.
 }
 
 pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !rhythm.Conductor {
-    var arena_alloc = std.heap.ArenaAllocator.init(allocator);
-    defer arena_alloc.deinit();
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
 
-    var arena_allocator = arena_alloc.allocator();
+    var arena_allocator = arena.allocator();
 
     var output = rhythm.Conductor{
         .notes = try allocator.alloc(rhythm.Note, 0),
@@ -91,11 +91,11 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
     const Steps = enum { SkipUntilHashtag, ParseKey, ParseValue };
     var current_step = Steps.SkipUntilHashtag;
 
-    var current_key = try allocator.alloc(u8, 0);
-    defer allocator.free(current_key);
+    var current_key = try arena_allocator.alloc(u8, 0);
+    defer arena_allocator.free(current_key);
 
-    var current_value = try allocator.alloc(u8, 0);
-    defer allocator.free(current_value);
+    var current_value = try arena_allocator.alloc(u8, 0);
+    defer arena_allocator.free(current_value);
 
     var time_signatures = std.HashMap(u10, f64, struct {
         pub fn hash(self: @This(), key: u10) u64 {
@@ -107,7 +107,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
             _ = self;
             return a == b;
         }
-    }, 80).init(allocator);
+    }, 80).init(arena_allocator);
 
     const BmsObject = struct {
         measure: u10,
@@ -126,8 +126,8 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
             return lhs.measure < rhs.measure;
         }
     };
-    var bms_objects = try allocator.alloc(BmsObject, 0);
-    defer allocator.free(bms_objects);
+    var bms_objects = try arena_allocator.alloc(BmsObject, 0);
+    defer arena_allocator.free(bms_objects);
 
     const RandomValue = struct {
         value: u32,
@@ -139,7 +139,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
 
     var random_stack = RandomStack{};
     defer for (0..random_stack.len) |_| {
-        allocator.destroy(random_stack.pop().?);
+        arena_allocator.destroy(random_stack.pop().?);
     };
 
     const BmsFloatDictionary = std.HashMap(u11, f64, struct {
@@ -170,9 +170,9 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
     // var keysoundThreads: [1295]?std.Thread = .{null} ** 1295;
 
     var initial_bpm: f64 = 0.0;
-    var bpm_values = BmsFloatDictionary.init(allocator);
-    var stop_values = BmsIntDictionary.init(allocator);
-    var scroll_values = BmsFloatDictionary.init(allocator);
+    var bpm_values = BmsFloatDictionary.init(arena_allocator);
+    var stop_values = BmsIntDictionary.init(arena_allocator);
+    var scroll_values = BmsFloatDictionary.init(arena_allocator);
 
     var parsing_channel = false;
 
@@ -180,7 +180,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
         switch (current_step) {
             Steps.SkipUntilHashtag => {
                 if (char == '#') {
-                    try resetCurrentKeyValue(allocator, &current_key, &current_value);
+                    try resetCurrentKeyValue(arena_allocator, &current_key, &current_value);
                     current_step = Steps.ParseKey;
                     continue;
                 }
@@ -215,7 +215,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                             } else if (is_def and top_random_stack.data.skipping and !top_random_stack.data.already_matched) {
                                 top_random_stack.data.skipping = false;
                             } else if (is_endsw) {
-                                allocator.destroy(random_stack.pop().?);
+                                arena_allocator.destroy(random_stack.pop().?);
                             }
                         } else {
                             if (is_else) {
@@ -223,7 +223,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                             } else if (is_endif) {
                                 top_random_stack.data.skipping = false;
                             } else if (is_endrandom) {
-                                allocator.destroy(random_stack.pop().?);
+                                arena_allocator.destroy(random_stack.pop().?);
                             }
                         }
                     }
@@ -235,7 +235,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                     }
                     continue;
                 }
-                current_key = try allocator.realloc(current_key, current_key.len + 1);
+                current_key = try arena_allocator.realloc(current_key, current_key.len + 1);
                 current_key[current_key.len - 1] = std.ascii.toUpper(char);
             },
             Steps.ParseValue => {
@@ -261,7 +261,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
 
                                     const fraction = @as(f64, @floatFromInt(i)) / @as(f64, @floatFromInt(divisions));
 
-                                    bms_objects = try allocator.realloc(bms_objects, bms_objects.len + 1);
+                                    bms_objects = try arena_allocator.realloc(bms_objects, bms_objects.len + 1);
                                     bms_objects[bms_objects.len - 1] = BmsObject{
                                         .measure = measure,
                                         .channel = channel,
@@ -285,7 +285,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                             }
 
                             if (is_switch) {
-                                const new_node = try allocator.create(RandomStack.Node);
+                                const new_node = try arena_allocator.create(RandomStack.Node);
                                 new_node.* =
                                     RandomStack.Node{
                                     .prev = random_stack.last,
@@ -297,7 +297,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                                 };
                                 random_stack.append(new_node);
                             } else if (is_random) {
-                                const new_node = try allocator.create(RandomStack.Node);
+                                const new_node = try arena_allocator.create(RandomStack.Node);
                                 new_node.* =
                                     RandomStack.Node{
                                     .prev = random_stack.last,
@@ -368,7 +368,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                     current_step = Steps.SkipUntilHashtag;
                     continue;
                 }
-                current_value = try allocator.realloc(current_value, current_value.len + 1);
+                current_value = try arena_allocator.realloc(current_value, current_value.len + 1);
                 current_value[current_value.len - 1] = char;
             },
         }

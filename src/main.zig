@@ -28,6 +28,9 @@ pub fn main() !void {
 
     std.debug.assert(sdl.Mix_Init(@intCast(sdl.MIX_INIT_OGG)) != 0);
     defer sdl.Mix_Quit();
+    std.debug.assert(sdl.Mix_OpenAudio(48000, sdl.MIX_DEFAULT_FORMAT, 2, 2048) == 0);
+    defer sdl.Mix_CloseAudio();
+    std.debug.assert(sdl.Mix_AllocateChannels(1295) == 1295);
 
     const scroll_speed_mul: f80 = 2.5;
 
@@ -42,8 +45,8 @@ pub fn main() !void {
     const song_folder_path = try std.fs.path.join(loading_allocator, &[_][]const u8{
         cwdPath,
         "test_chart",
-        "[Clue]Random",
-        // "[pi26]Hypersurface",
+        // "[Clue]Random",
+        "[pi26]Hypersurface",
         // "Anhedonia",
     });
 
@@ -51,8 +54,8 @@ pub fn main() !void {
     const chart_file_path = try std.fs.path.join(loading_allocator, &[_][]const u8{
         song_folder_path,
         // "ass2.bms",
-        "_random_s2.bms",
-        // "7MX.bms",
+        // "_random_s2.bms",
+        "7MX.bms",
         // "anhedonia_XYZ.bms",
     });
 
@@ -73,7 +76,7 @@ pub fn main() !void {
     );
     // Make sure to unload the keysounds
     defer for (conductor.keysounds) |sound| {
-        sdl.Mix_FreeMusic(sound);
+        sdl.Mix_FreeChunk(sound);
     };
 
     // Free everything in the loading arena
@@ -141,6 +144,17 @@ pub fn main() !void {
         // current sdl performance tick (with start_performance_ticks already subtracted)
         const current_performance_ticks = sdl.SDL_GetPerformanceCounter() - start_tick;
         const current_time: f80 = @as(f80, @floatFromInt(current_performance_ticks)) / performance_frequency;
+
+        for (state.last_processed_object..conductor.objects.len) |i| {
+            const object = conductor.objects[i];
+            const time = times[i];
+            if (object.obj_type == rhythm.Conductor.ObjectType.Note) {
+                if (current_time >= time) {
+                    const keysound_id = conductor.notes[object.index].keysound_id;
+                    std.debug.assert(sdl.Mix_PlayChannel(keysound_id, conductor.keysounds[keysound_id], 0) == keysound_id);
+                }
+            }
+        }
 
         // update game state
         state.process(conductor, current_time);
