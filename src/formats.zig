@@ -6,6 +6,7 @@ const gfx = @import("graphics.zig");
 const sdl = @cImport({
     @cInclude("SDL2/SDL.h");
     @cInclude("SDL2/SDL_mixer.h");
+    @cInclude("SDL2/SDL_ttf.h");
 });
 
 fn resetCurrentKeyValue(allocator: std.mem.Allocator, current_key: *[]u8, current_value: *[]u8) !void {
@@ -96,7 +97,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
     var current_value = try allocator.alloc(u8, 0);
     defer allocator.free(current_value);
 
-    var time_signatures = std.HashMap(u10, f80, struct {
+    var time_signatures = std.HashMap(u10, f64, struct {
         pub fn hash(self: @This(), key: u10) u64 {
             _ = self;
             return @intCast(key);
@@ -110,7 +111,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
 
     const BmsObject = struct {
         measure: u10,
-        fraction: f80,
+        fraction: f64,
         channel: u11,
         value: u11,
 
@@ -141,7 +142,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
         allocator.destroy(random_stack.pop().?);
     };
 
-    const BmsFloatDictionary = std.HashMap(u11, f80, struct {
+    const BmsFloatDictionary = std.HashMap(u11, f64, struct {
         pub fn hash(self: @This(), key: u11) u64 {
             _ = self;
             return @intCast(key);
@@ -168,7 +169,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
     const open_directory = try std.fs.openDirAbsolute(directory, std.fs.Dir.OpenDirOptions{});
     // var keysoundThreads: [1295]?std.Thread = .{null} ** 1295;
 
-    var initial_bpm: f80 = 0.0;
+    var initial_bpm: f64 = 0.0;
     var bpm_values = BmsFloatDictionary.init(allocator);
     var stop_values = BmsIntDictionary.init(allocator);
     var scroll_values = BmsFloatDictionary.init(allocator);
@@ -247,7 +248,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
 
                         switch (channel) {
                             2 => {
-                                try time_signatures.put(measure, try std.fmt.parseFloat(f80, current_value));
+                                try time_signatures.put(measure, try std.fmt.parseFloat(f64, current_value));
                             },
                             else => {
                                 const divisions = current_value.len / 2;
@@ -258,7 +259,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                                         continue;
                                     }
 
-                                    const fraction = @as(f80, @floatFromInt(i)) / @as(f80, @floatFromInt(divisions));
+                                    const fraction = @as(f64, @floatFromInt(i)) / @as(f64, @floatFromInt(divisions));
 
                                     bms_objects = try allocator.realloc(bms_objects, bms_objects.len + 1);
                                     bms_objects[bms_objects.len - 1] = BmsObject{
@@ -326,10 +327,10 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                             }
                         }
                         if (std.mem.eql(u8, current_key, "BPM")) {
-                            initial_bpm = try std.fmt.parseFloat(f80, current_value);
+                            initial_bpm = try std.fmt.parseFloat(f64, current_value);
                         } else if (std.mem.startsWith(u8, current_key, "BPM")) {
                             const key = try std.fmt.parseInt(u11, current_key[3..5], 36);
-                            const bpm = try std.fmt.parseFloat(f80, current_value);
+                            const bpm = try std.fmt.parseFloat(f64, current_value);
                             try bpm_values.put(key, bpm);
                         } else if (std.mem.startsWith(u8, current_key, "STOP")) {
                             const key = try std.fmt.parseInt(u11, current_key[4..6], 36);
@@ -337,7 +338,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                             try stop_values.put(key, stopped_time);
                         } else if (std.mem.startsWith(u8, current_key, "SCROLL")) {
                             const key = try std.fmt.parseInt(u11, current_key[6..8], 36);
-                            const new_scroll = try std.fmt.parseFloat(f80, current_value);
+                            const new_scroll = try std.fmt.parseFloat(f64, current_value);
                             try scroll_values.put(key, new_scroll);
                         } else if (std.mem.startsWith(u8, current_key, "WAV")) {
                             const index = try std.fmt.parseInt(u11, current_key[3..5], 36) - 1;
@@ -395,11 +396,11 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
         if (last_processed_measure != object.measure) {
             for (last_processed_measure..object.measure) |measure_usize| {
                 const measure: u10 = @intCast(measure_usize);
-                const beats_in_measure_multiplier: ?f80 = time_signatures.get(@intCast(measure));
+                const beats_in_measure_multiplier: ?f64 = time_signatures.get(@intCast(measure));
                 if (beats_in_measure_multiplier == null) {
                     beats_in_measure = 4.0;
                 } else {
-                    beats_in_measure = 4.0 * beats_in_measure_multiplier.?;
+                    beats_in_measure = 4.0 * @as(f80, @floatCast(beats_in_measure_multiplier.?));
                 }
                 beats_until_now += beats_in_measure;
                 output.segments = try allocator.realloc(output.segments, output.segments.len + 1);
@@ -409,11 +410,11 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !
                 };
                 last_processed_measure = measure;
             }
-            const beats_in_measure_multiplier: ?f80 = time_signatures.get(@intCast(object.measure));
+            const beats_in_measure_multiplier: ?f64 = time_signatures.get(@intCast(object.measure));
             if (beats_in_measure_multiplier == null) {
                 beats_in_measure = 4.0;
             } else {
-                beats_in_measure = 4.0 * beats_in_measure_multiplier.?;
+                beats_in_measure = 4.0 * @as(f80, @floatCast(beats_in_measure_multiplier.?));
             }
             last_processed_measure = object.measure;
         }

@@ -44,6 +44,15 @@ pub fn build(b: *std.Build) !void {
     exe.addLibraryPath(sdl2_mixer.path("x86_64-w64-mingw32/lib/"));
     exe.linkSystemLibrary("SDL2_mixer");
 
+    const sdl2_ttf = b.dependency("sdl2_ttf", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.addIncludePath(sdl2_ttf.path("x86_64-w64-mingw32/include/"));
+    exe.addLibraryPath(sdl2_ttf.path("x86_64-w64-mingw32/bin/"));
+    exe.addLibraryPath(sdl2_ttf.path("x86_64-w64-mingw32/lib/"));
+    exe.linkSystemLibrary("sdl2_ttf");
+
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).

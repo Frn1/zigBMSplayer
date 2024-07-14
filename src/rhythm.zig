@@ -6,6 +6,7 @@ const gfx = @import("graphics.zig");
 const sdl = @cImport({
     @cInclude("SDL2/SDL.h");
     @cInclude("SDL2/SDL_mixer.h");
+    @cInclude("SDL2/SDL_ttf.h");
 });
 
 pub const NormalNoteTypeTag = enum { normal, mine, hidden };
@@ -44,7 +45,7 @@ pub const Note = struct {
 
 pub const SegmentTypeTag = enum { bpm, scroll, stop, barline };
 
-pub const SegmentType = union(SegmentTypeTag) { bpm: f80, scroll: f80, stop: f80, barline };
+pub const SegmentType = union(SegmentTypeTag) { bpm: f64, scroll: f64, stop: f80, barline };
 
 pub const Segment = struct {
     beat: f80,
@@ -75,6 +76,8 @@ pub const Conductor = struct {
         fn lessThanFn(ctx: Conductor, lhs: @This(), rhs: @This()) bool {
             if (lhs.obj_beat == rhs.obj_beat) {
                 if (rhs.obj_type == ObjectType.Segment) {
+                    // Make stops go at the end of the beat
+                    // This is cuz EVERYTHING at this beat takes priority before stopping
                     return ctx.segments[rhs.index].type == SegmentTypeTag.stop;
                 }
                 return false;
@@ -240,22 +243,24 @@ pub const ConductorState = struct {
                         if (std.math.isNan(self.current_sec_per_beat)) {
                             self.sec_offset = self.calculateSecondsFromBeatApprox(segment.beat);
                             self.beat_offset = 0;
-                            self.current_sec_per_beat = 60 / new_bpm;
+                            self.current_sec_per_beat = @floatCast(60.0 / new_bpm);
                         } else {
                             // Calculate the time the bpm change should've occured
                             self.sec_offset = self.calculateSecondsFromBeatApprox(segment.beat);
                             self.beat_offset = segment.beat;
-                            self.current_sec_per_beat = 60 / new_bpm;
+                            self.current_sec_per_beat = @floatCast(60.0 / new_bpm);
                         }
                     },
                     SegmentTypeTag.scroll => |new_scroll| {
                         self.visual_pos_offset = self.calculateVisualPosition(segment.beat);
                         self.visual_beats_offset = segment.beat;
-                        self.current_scroll_mul = new_scroll;
+                        self.current_scroll_mul = @floatCast(new_scroll);
                         // self.visual_beats_offset
                     },
                     SegmentTypeTag.stop => |stopped_beats| {
-                        self.sec_offset = self.calculateSecondsFromBeatApprox(segment.beat + stopped_beats);
+                        self.sec_offset = self.calculateSecondsFromBeatApprox(
+                            segment.beat + @as(f80, @floatCast(stopped_beats)),
+                        );
                         self.beat_offset = segment.beat;
                         self.visual_pos_offset = self.calculateVisualPosition(segment.beat);
                         self.visual_beats_offset = segment.beat;
