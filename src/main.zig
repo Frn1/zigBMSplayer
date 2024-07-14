@@ -18,7 +18,7 @@ pub fn main() !void {
     defer {
         const deinit_status = gpa.deinit();
         //fail test; can't try in defer as defer is executed after we return
-        if (deinit_status == .leak) @panic("TEST FAIL");
+        if (deinit_status == .leak) @panic("Memory leak :(");
     }
 
     // init sdl
@@ -38,7 +38,7 @@ pub fn main() !void {
     defer sdl.Mix_CloseAudio();
     std.debug.assert(sdl.Mix_AllocateChannels(1295) == 1295);
 
-    const scroll_speed_mul: f80 = 2.5;
+    var scroll_speed_mul: f80 = 2.0;
 
     var loading_arena = std.heap.ArenaAllocator.init(main_allocator);
     // Allocator used when loading stuff that wont stay after loading
@@ -134,14 +134,11 @@ pub fn main() !void {
     // the start of the performance tick counter
     const start_tick = sdl.SDL_GetPerformanceCounter();
 
-    var quit = false;
-
     // used for fps
     var last_frame_end = sdl.SDL_GetPerformanceCounter();
 
     // Event loop
-    while (!quit) {
-
+    main_loop: while (true) {
         // We dont care about "strictness" or "accuracy"
         // we just want something that runs quick lol
         @setFloatMode(std.builtin.FloatMode.optimized);
@@ -175,8 +172,14 @@ pub fn main() !void {
         // handle events
         var event: sdl.SDL_Event = undefined;
         while (sdl.SDL_PollEvent(&event) > 0) {
-            if (event.type == sdl.SDL_QUIT) {
-                quit = true;
+            switch (event.type) {
+                sdl.SDL_QUIT => break :main_loop,
+                sdl.SDL_KEYDOWN => switch (event.key.keysym.sym) {
+                    sdl.SDLK_UP => scroll_speed_mul += 0.1,
+                    sdl.SDLK_DOWN => scroll_speed_mul -= 0.1,
+                    else => {},
+                },
+                else => {},
             }
         }
 
@@ -185,18 +188,33 @@ pub fn main() !void {
         std.debug.assert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF) == 0);
         std.debug.assert(sdl.SDL_RenderClear(renderer) == 0);
 
-        for (conductor.objects, positions, times, 0..) |object, position, time_sec, i| {
-            _ = time_sec;
-            // _ = try std.fmt.bufPrint(text1, "{s}{}\tT\t{d:.3}\tP\t{d:.3}\u{0000}", .{
-            //     switch (object.obj_type) {
-            //         rhythm.Conductor.ObjectType.Note => "Note",
-            //         rhythm.Conductor.ObjectType.Segment => "Segment",
-            //     },
-            //     i,
-            //     time_sec,
-            //     position.visual_beat,
-            // });
+        for (conductor.objects, positions, 0..) |object, position, i| {
+            var render_y = @as(i32, @intFromFloat((visual_beat - position.visual_beat) * scroll_speed_mul * c.beat_height));
+            render_y += c.judgement_line_y;
 
+            if (render_y < -c.note_height) {
+                continue;
+            }
+
+            if (object.obj_type == rhythm.Conductor.ObjectType.Segment) {
+                if (render_y > c.screen_height + c.note_height) {
+                    continue;
+                }
+
+                // change color to white
+                std.debug.assert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
+
+                const segment = conductor.segments[conductor.objects[i].index];
+                switch (segment.type) {
+                    rhythm.SegmentTypeTag.barline => {
+                        std.debug.assert(sdl.SDL_RenderDrawLine(renderer, 0, render_y, c.note_width * 9, render_y) == 0);
+                    },
+                    else => {},
+                }
+            }
+        }
+
+        for (conductor.objects, positions, 0..) |object, position, i| {
             var render_y = @as(i32, @intFromFloat((visual_beat - position.visual_beat) * scroll_speed_mul * c.beat_height));
             render_y += c.judgement_line_y;
 
@@ -245,27 +263,7 @@ pub fn main() !void {
                     },
                     else => {},
                 }
-
-                // texts_drawn += 1;
-            } else if (object.obj_type == rhythm.Conductor.ObjectType.Segment) {
-                if (render_y > c.screen_height + c.note_height) {
-                    continue;
-                }
-
-                // change color to white
-                std.debug.assert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
-
-                const segment = conductor.segments[conductor.objects[i].index];
-                switch (segment.type) {
-                    rhythm.SegmentTypeTag.barline => {
-                        std.debug.assert(sdl.SDL_RenderDrawLine(renderer, 0, render_y, c.note_width * 9, render_y) == 0);
-                    },
-                    else => {
-                        // raylib.DrawText(text1, 0, render_y, 20, raylib.YELLOW);
-                    },
-                }
             }
-            // std.debug.print("{}\n", .{y});
         }
 
         // change color to white
@@ -287,5 +285,8 @@ pub fn main() !void {
             @floatFromInt(sdl.SDL_GetPerformanceCounter() - last_frame_end),
         )});
         gfx.draw_text(text, renderer, 0, 24 * 2, debug_font);
+
+        _ = try std.fmt.bufPrint(text, "SC  {d:.1}\u{0000}", .{scroll_speed_mul});
+        gfx.draw_text(text, renderer, 0, 24 * 3, debug_font);
     }
 }
