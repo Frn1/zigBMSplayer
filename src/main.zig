@@ -107,7 +107,7 @@ pub fn main() !void {
     const renderer: *sdl.SDL_Renderer = sdl.SDL_CreateRenderer(
         window,
         -1,
-        sdl.SDL_RENDERER_SOFTWARE,
+        sdl.SDL_RENDERER_ACCELERATED,
     ).?;
     defer sdl.SDL_DestroyRenderer(renderer);
 
