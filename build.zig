@@ -1,5 +1,51 @@
 const std = @import("std");
 
+fn addCLibrary(name: []const u8, b: *std.Build, exe: *std.Build.Step.Compile) !void {
+    const allocator = b.allocator;
+
+    const c_triple = "x86_64-w64-mingw32";
+
+    const include_path = try std.fs.path.join(allocator, &.{ c_triple, "include" });
+    const include_name_path = try std.fs.path.join(allocator, &.{ c_triple, "include", name });
+    const bin_path = try std.fs.path.join(allocator, &.{ c_triple, "bin" });
+    const lib_path = try std.fs.path.join(allocator, &.{ c_triple, "lib" });
+
+    const sys_lib_name = try std.mem.join(allocator, ".", &.{ name, "dll" });
+    const sys_lib_path = try std.fs.path.join(allocator, &.{ bin_path, sys_lib_name });
+
+    const dependency = b.dependency(name, .{
+        // .target = b.resolveTargetQuery(std.Target.)
+    });
+    exe.addIncludePath(dependency.path(include_path));
+    exe.addIncludePath(dependency.path(include_name_path));
+    exe.addLibraryPath(dependency.path(bin_path));
+    exe.addLibraryPath(dependency.path(lib_path));
+
+    const install = b.getInstallStep();
+    const install_data = b.addInstallBinFile(
+        .{
+            .dependency = .{
+                .dependency = dependency,
+                .sub_path = sys_lib_path,
+            },
+        },
+        sys_lib_name,
+    );
+    install.dependOn(&install_data.step);
+
+    _ = b.addInstallDirectory(.{
+        .source_dir = .{
+            .dependency = .{
+                .dependency = dependency,
+                .sub_path = sys_lib_path,
+            },
+        },
+        .install_dir = std.Build.InstallDir{ .lib = {} },
+        .install_subdir = ".",
+    });
+    exe.linkSystemLibrary(name);
+}
+
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
 // runner.
@@ -25,33 +71,9 @@ pub fn build(b: *std.Build) !void {
         .link_libc = true,
     });
 
-    const sdl2 = b.dependency("sdl2", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    exe.addIncludePath(sdl2.path("x86_64-w64-mingw32/include/"));
-    exe.addIncludePath(sdl2.path("x86_64-w64-mingw32/include/SDL2"));
-    exe.addLibraryPath(sdl2.path("x86_64-w64-mingw32/bin/"));
-    exe.addLibraryPath(sdl2.path("x86_64-w64-mingw32/lib/"));
-    exe.linkSystemLibrary("SDL2");
-
-    const sdl2_mixer = b.dependency("sdl2_mixer", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    exe.addIncludePath(sdl2_mixer.path("x86_64-w64-mingw32/include/"));
-    exe.addLibraryPath(sdl2_mixer.path("x86_64-w64-mingw32/bin/"));
-    exe.addLibraryPath(sdl2_mixer.path("x86_64-w64-mingw32/lib/"));
-    exe.linkSystemLibrary("SDL2_mixer");
-
-    const sdl2_ttf = b.dependency("sdl2_ttf", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    exe.addIncludePath(sdl2_ttf.path("x86_64-w64-mingw32/include/"));
-    exe.addLibraryPath(sdl2_ttf.path("x86_64-w64-mingw32/bin/"));
-    exe.addLibraryPath(sdl2_ttf.path("x86_64-w64-mingw32/lib/"));
-    exe.linkSystemLibrary("sdl2_ttf");
+    try addCLibrary("SDL2", b, exe);
+    try addCLibrary("SDL2_mixer", b, exe);
+    try addCLibrary("SDL2_ttf", b, exe);
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
