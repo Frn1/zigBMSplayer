@@ -17,7 +17,7 @@ fn resetCurrentKeyValue(allocator: std.mem.Allocator, current_key: *[]u8, curren
     current_value.* = try allocator.alloc(u8, 0);
 }
 
-fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []u8, directory: std.fs.Dir, directory_path: []u8, output: *?*sdl.Mix_Chunk) !void {
+fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []const u8, directory: std.fs.Dir, directory_path: []const u8, output: *?*sdl.Mix_Chunk) !void {
     const filename_stem = std.fs.path.stem(filename);
     const filename_dirname = std.fs.path.dirname(filename);
 
@@ -77,7 +77,7 @@ fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []u8, directory: s
     }
 }
 
-pub fn compileBMS(allocator: std.mem.Allocator, directory: []u8, data: [:0]u8) !rhythm.Conductor {
+pub fn compileBMS(allocator: std.mem.Allocator, directory: []const u8, data: [:0]const u8) !rhythm.Conductor {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 

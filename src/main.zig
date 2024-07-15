@@ -44,32 +44,24 @@ pub fn main() !void {
     // Allocator used when loading stuff that wont stay after loading
     const loading_allocator = loading_arena.allocator();
 
-    // Current working directory path
-    const cwd_path = try std.process.getCwdAlloc(loading_allocator);
-
-    // Path for the song folder
-    const song_folder_path = try std.fs.path.join(loading_allocator, &[_][]const u8{
-        cwd_path,
-        "test_chart",
-        // "[Clue]Random",
-        "[pi26]Hypersurface",
-        // "Anhedonia",
-    });
+    const args = try std.process.argsAlloc(loading_allocator);
+    if (args.len < 2) {
+        std.debug.print("ERROR: Missing path\n", .{});
+        std.process.exit(1);
+        return error.ExpectedArgument;
+    }
 
     // Path for the chart file
-    const chart_file_path = try std.fs.path.join(loading_allocator, &[_][]const u8{
-        song_folder_path,
-        // "ass2.bms",
-        // "_random_s2.bms",
-        "7MX.bms",
-        // "anhedonia_XYZ.bms",
-    });
+    const chart_file_path = args[1];
+
+    // Path for the song folder
+    const song_folder_path = std.fs.path.dirname(args[1]) orelse try std.process.getCwdAlloc(loading_allocator);
 
     const chart_file = try std.fs.openFileAbsolute(chart_file_path, std.fs.File.OpenFlags{});
     defer chart_file.close();
 
     // TODO: Multiple conductors/timing groups???
-    var conductor = try formats.compileBMS(
+    var conductor = formats.compileBMS(
         main_allocator,
         song_folder_path,
         try chart_file.readToEndAllocOptions(
@@ -79,7 +71,10 @@ pub fn main() !void {
             1,
             0,
         ),
-    );
+    ) catch |e| {
+        std.debug.print("ERROR: Couldn't load BMS File ({any})", .{e});
+        std.process.exit(1);
+    };
     // Make sure to unload the keysounds
     defer for (conductor.keysounds) |sound| {
         sdl.Mix_FreeChunk(sound);
@@ -161,6 +156,9 @@ pub fn main() !void {
         for (last_object_processed_before..last_object_processed_after) |i| {
             const object = conductor.objects[i];
             if (object.obj_type == rhythm.Conductor.ObjectType.Note) {
+                if (conductor.notes[object.index].type == .ln_tail) {
+                    continue; // avoid playing the tail keysounds
+                }
                 const keysound_id = conductor.notes[object.index].keysound_id - 1;
                 const keysound = conductor.keysounds[keysound_id];
                 if (keysound != null) {
