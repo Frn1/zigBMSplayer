@@ -57,7 +57,11 @@ pub fn main() !void {
     // Path for the song folder
     const song_folder_path = std.fs.path.dirname(args[1]) orelse try std.process.getCwdAlloc(loading_allocator);
 
-    const chart_file = try std.fs.openFileAbsolute(chart_file_path, std.fs.File.OpenFlags{});
+    const chart_file = std.fs.openFileAbsolute(chart_file_path, std.fs.File.OpenFlags{}) catch |e| {
+        std.debug.print("ERROR: Couldn't open file ({!})\n", .{e});
+        std.process.exit(1);
+        return e;
+    };
     defer chart_file.close();
 
     // TODO: Multiple conductors/timing groups???
@@ -72,7 +76,7 @@ pub fn main() !void {
             0,
         ),
     ) catch |e| {
-        std.debug.print("ERROR: Couldn't load BMS File ({any})", .{e});
+        std.debug.print("ERROR: Couldn't load BMS File ({!})", .{e});
         std.process.exit(1);
     };
     // Make sure to unload the keysounds
@@ -150,6 +154,10 @@ pub fn main() !void {
         const last_object_processed_before = state.last_processed_object;
         state.process(conductor, current_time);
         const last_object_processed_after = state.last_processed_object;
+
+        if (state.last_processed_object == conductor.objects.len - 1) {
+            break;
+        }
 
         const visual_beat = state.calculateVisualPosition(state.current_beat);
 
