@@ -161,7 +161,15 @@ pub fn main() !void {
 
         if (state.last_processed_object == conductor.objects.len - 1) {
             if (sdl.Mix_Playing(-1) == 0) { // wait until all sounds stop to quit
-                break;
+                break; // Quit the program
+            } else {
+                for (0..1295) |channel| {
+                    if (sdl.Mix_Playing(@intCast(channel)) != 0 and sdl.Mix_Volume(@intCast(channel), -1) != 0) {
+                        break; // If a sound is still playing (and has volume), break
+                    }
+                } else {
+                    break :main_loop; // Quit the program
+                }
             }
         }
 
@@ -176,6 +184,7 @@ pub fn main() !void {
                 const keysound_id = conductor.notes[object.index].keysound_id - 1;
                 const keysound = conductor.keysounds[keysound_id];
                 if (keysound != null) {
+                    _ = sdl.Mix_Volume(keysound_id, sdl.SDL_MIX_MAXVOLUME);
                     try std.testing.expect(sdl.Mix_PlayChannel(keysound_id, conductor.keysounds[keysound_id], 0) == keysound_id);
                 }
             }

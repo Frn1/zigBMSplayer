@@ -366,7 +366,8 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []const u8, data: [:0
                                 @memcpy(filenameCopy, current_value);
 
                                 if (output.keysounds[index] != null) {
-                                    // if there is a sound already loaded in that channel, unload it
+                                    // if there is a sound already loaded in that channel, stop and unload it
+                                    std.debug.assert(sdl.Mix_HaltChannel(index) == 0);
                                     sdl.Mix_FreeChunk(output.keysounds[index]);
                                 }
 
@@ -383,7 +384,8 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []const u8, data: [:0
                                 // so we just play it and immediatly halt it so that it like preloads??? idk
                                 if (output.keysounds[index] != null) {
                                     // we assert instead of expect here cuz we dont really care about this lol
-                                    // so if were building for ReleaseFast/Safe we just say fuck it
+                                    // so if were building for ReleaseFast/Safe we just say fuck
+                                    _ = sdl.Mix_Volume(-1, 0); // Set channel to volume 0
                                     std.debug.assert(sdl.Mix_PlayChannel(index, output.keysounds[index], 0) == index);
                                 }
                             }
@@ -609,10 +611,6 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []const u8, data: [:0
 
     //     thread.?.join();
     // }
-
-    for (0..output.keysounds.len) |channel| {
-        std.debug.assert(sdl.Mix_HaltChannel(@intCast(channel)) == 0);
-    }
 
     return output;
 }
