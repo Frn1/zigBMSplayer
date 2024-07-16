@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/zig-out/bin/rhythmicZig.exe",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}/zig-out",
             "environment": [],
             "externalConsole": false,
             "MIMode": "gdb",
@@ -28,7 +28,7 @@
           "program": "${workspaceFolder}/zig-out/bin/rhythmicZig.exe",
           "args": [],
           "stopAtEntry": false,
-          "cwd": "${workspaceFolder}",
+          "cwd": "${workspaceFolder}/zig-out",
           "preLaunchTask": "build",
           "environment": []
         },

@@ -33,16 +33,6 @@ fn addCLibrary(name: []const u8, b: *std.Build, exe: *std.Build.Step.Compile) !v
     );
     install.dependOn(&install_data.step);
 
-    _ = b.addInstallDirectory(.{
-        .source_dir = .{
-            .dependency = .{
-                .dependency = dependency,
-                .sub_path = sys_lib_path,
-            },
-        },
-        .install_dir = std.Build.InstallDir{ .lib = {} },
-        .install_subdir = ".",
-    });
     exe.linkSystemLibrary(name);
 }
 
@@ -75,6 +65,20 @@ pub fn build(b: *std.Build) !void {
     try addCLibrary("SDL2_mixer", b, exe);
     try addCLibrary("SDL2_ttf", b, exe);
 
+    const install = b.getInstallStep();
+    const install_data = b.addInstallDirectory(
+        .{
+            .install_dir = .{
+                .prefix = {},
+            },
+            .install_subdir = "fonts",
+            .source_dir = .{
+                .cwd_relative = "fonts",
+            },
+        },
+    );
+    install.dependOn(&install_data.step);
+
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
@@ -90,6 +94,8 @@ pub fn build(b: *std.Build) !void {
     // This is not necessary, however, if the application depends on other installed
     // files, this ensures they will be present and in the expected location.
     run_cmd.step.dependOn(b.getInstallStep());
+
+    run_cmd.setCwd(.{ .cwd_relative = "zig-out" });
 
     // This allows the user to pass arguments to the application in the build
     // command itself, like this: `zig build run -- arg1 arg2 etc`
