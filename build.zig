@@ -1,28 +1,28 @@
 const std = @import("std");
 
-fn addSDLLibrary(name: []const u8, b: *std.Build, target: std.Target, exe: *std.Build.Step.Compile) !void {
+fn addSDLLibrary(name: []const u8, b: *std.Build, target: std.Build.ResolvedTarget, exe: *std.Build.Step.Compile) !void {
     var arena = std.heap.ArenaAllocator.init(b.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    if (target.isMinGW()) {
-        const mingw_name = try std.mem.join(allocator, "_", &.{ name, "mingw" });
+    const mingw_name = try std.mem.join(allocator, "_", &.{ name, "mingw" });
+    const sdl_triple = try std.fmt.allocPrint(allocator, "{s}-w64-mingw32", .{
+        if (target.result.ptrBitWidth() == 64) "x86_64" else "i686",
+    });
+    const include_path = try std.fs.path.join(allocator, &.{ sdl_triple, "include" });
+    const include_name_path = try std.fs.path.join(allocator, &.{ sdl_triple, "include", name });
 
-        const c_triple = try std.fmt.allocPrint(allocator, "{s}-w64-mingw32", .{
-            if (target.ptrBitWidth() == 32) "i686" else target.osArchName(),
-        });
+    const dependency = b.dependency(mingw_name, .{});
+    exe.addIncludePath(dependency.path(include_path));
+    exe.addIncludePath(dependency.path(include_name_path));
 
-        const include_path = try std.fs.path.join(allocator, &.{ c_triple, "include" });
-        const include_name_path = try std.fs.path.join(allocator, &.{ c_triple, "include", name });
-        const bin_path = try std.fs.path.join(allocator, &.{ c_triple, "bin" });
-        const lib_path = try std.fs.path.join(allocator, &.{ c_triple, "lib" });
+    if (target.result.isMinGW()) {
+        const bin_path = try std.fs.path.join(allocator, &.{ sdl_triple, "bin" });
+        const lib_path = try std.fs.path.join(allocator, &.{ sdl_triple, "lib" });
 
         const sys_lib_name = try std.mem.join(allocator, ".", &.{ name, "dll" });
         const sys_lib_path = try std.fs.path.join(allocator, &.{ bin_path, sys_lib_name });
 
-        const dependency = b.dependency(mingw_name, .{});
-        exe.addIncludePath(dependency.path(include_path));
-        exe.addIncludePath(dependency.path(include_name_path));
         exe.addLibraryPath(dependency.path(bin_path));
         exe.addLibraryPath(dependency.path(lib_path));
 
@@ -37,16 +37,9 @@ fn addSDLLibrary(name: []const u8, b: *std.Build, target: std.Target, exe: *std.
             sys_lib_name,
         );
         install.dependOn(&install_data.step);
-
-        exe.linkSystemLibrary(name);
-    } else {
-        const include_path = "include";
-        const include_name_path = try std.fs.path.join(allocator, &.{ "include", name });
-
-        const dependency = b.dependency(name, .{});
-        exe.addIncludePath(dependency.path(include_path));
-        exe.addIncludePath(dependency.path(include_name_path));
     }
+
+    exe.linkSystemLibrary(name);
 }
 
 // Although this function looks imperative, note that its job is to
@@ -74,9 +67,9 @@ pub fn build(b: *std.Build) !void {
         .link_libc = true,
     });
 
-    try addSDLLibrary("SDL2", b, target.result, exe);
-    try addSDLLibrary("SDL2_mixer", b, target.result, exe);
-    try addSDLLibrary("SDL2_ttf", b, target.result, exe);
+    try addSDLLibrary("SDL2", b, target, exe);
+    try addSDLLibrary("SDL2_mixer", b, target, exe);
+    try addSDLLibrary("SDL2_ttf", b, target, exe);
 
     const install = b.getInstallStep();
     const install_data = b.addInstallDirectory(

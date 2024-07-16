@@ -17,18 +17,18 @@
             .url = "https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.22.0/SDL2_ttf-devel-2.22.0-mingw.tar.gz",
             .hash = "12200686597ee80c630f310207180a969bc35929dc60c7b4250860c77111c08ed176",
         },
-        .SDL2 = .{
-            .url = "https://github.com/libsdl-org/SDL/releases/download/release-2.30.5/SDL2-2.30.5.tar.gz",
-            .hash = "122040532bcef655b7afd21dbaa87b3c28f55658e532d3f6c8064de7792407ce3d46",
-        },
-        .SDL2_mixer = .{
-            .url = "https://github.com/libsdl-org/SDL_mixer/releases/download/release-2.8.0/SDL2_mixer-2.8.0.tar.gz",
-            .hash = "12209f4211e5ea3df65f862431f1102e26adfed8d2214a47ae5486dd6ea96b2f24d0",
-        },
-        .SDL2_ttf = .{
-            .url = "https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.22.0/SDL2_ttf-2.22.0.tar.gz",
-            .hash = "122040ab86b8bff98cf6a59ecc172c38ff057728c5de5af5f95e9fc9ed9e529f5792",
-        },
+        // .SDL2 = .{
+        //     .url = "https://github.com/libsdl-org/SDL/releases/download/release-2.30.5/SDL2-2.30.5.tar.gz",
+        //     .hash = "122040532bcef655b7afd21dbaa87b3c28f55658e532d3f6c8064de7792407ce3d46",
+        // },
+        // .SDL2_mixer = .{
+        //     .url = "https://github.com/libsdl-org/SDL_mixer/releases/download/release-2.8.0/SDL2_mixer-2.8.0.tar.gz",
+        //     .hash = "12209f4211e5ea3df65f862431f1102e26adfed8d2214a47ae5486dd6ea96b2f24d0",
+        // },
+        // .SDL2_ttf = .{
+        //     .url = "https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.22.0/SDL2_ttf-2.22.0.tar.gz",
+        //     .hash = "122040ab86b8bff98cf6a59ecc172c38ff057728c5de5af5f95e9fc9ed9e529f5792",
+        // },
     },
     .paths = .{
         // This makes *all* files, recursively, included in this package. It is generally

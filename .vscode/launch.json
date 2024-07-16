@@ -6,7 +6,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/zig-out/bin/rhythmicZig.exe",
-            "args": ["--", "c:\\Users\\pcont\\Downloads\\Moonlit_Operation_ogg\\_Moonlit_Operation_SPI.bms"],
+            "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/zig-out",
             "environment": [],
