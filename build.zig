@@ -5,39 +5,34 @@ fn addSDLLibrary(name: []const u8, b: *std.Build, target: std.Build.ResolvedTarg
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const mingw_name = try std.mem.join(allocator, "_", &.{ name, "mingw" });
     const sdl_triple = try std.fmt.allocPrint(allocator, "{s}-w64-mingw32", .{
         if (target.result.ptrBitWidth() == 64) "x86_64" else "i686",
     });
     const include_path = try std.fs.path.join(allocator, &.{ sdl_triple, "include" });
     const include_name_path = try std.fs.path.join(allocator, &.{ sdl_triple, "include", name });
+    const bin_path = try std.fs.path.join(allocator, &.{ sdl_triple, "bin" });
+    const lib_path = try std.fs.path.join(allocator, &.{ sdl_triple, "lib" });
 
-    const dependency = b.dependency(mingw_name, .{});
+    const sys_lib_name = try std.mem.join(allocator, ".", &.{ name, "dll" });
+    const sys_lib_path = try std.fs.path.join(allocator, &.{ bin_path, sys_lib_name });
+
+    const dependency = b.dependency(name, .{});
     exe.addIncludePath(dependency.path(include_path));
     exe.addIncludePath(dependency.path(include_name_path));
+    exe.addLibraryPath(dependency.path(bin_path));
+    exe.addLibraryPath(dependency.path(lib_path));
 
-    if (target.result.isMinGW()) {
-        const bin_path = try std.fs.path.join(allocator, &.{ sdl_triple, "bin" });
-        const lib_path = try std.fs.path.join(allocator, &.{ sdl_triple, "lib" });
-
-        const sys_lib_name = try std.mem.join(allocator, ".", &.{ name, "dll" });
-        const sys_lib_path = try std.fs.path.join(allocator, &.{ bin_path, sys_lib_name });
-
-        exe.addLibraryPath(dependency.path(bin_path));
-        exe.addLibraryPath(dependency.path(lib_path));
-
-        const install = b.getInstallStep();
-        const install_data = b.addInstallBinFile(
-            .{
-                .dependency = .{
-                    .dependency = dependency,
-                    .sub_path = sys_lib_path,
-                },
+    const install = b.getInstallStep();
+    const install_data = b.addInstallBinFile(
+        .{
+            .dependency = .{
+                .dependency = dependency,
+                .sub_path = sys_lib_path,
             },
-            sys_lib_name,
-        );
-        install.dependOn(&install_data.step);
-    }
+        },
+        sys_lib_name,
+    );
+    install.dependOn(&install_data.step);
 
     exe.linkSystemLibrary(name);
 }
