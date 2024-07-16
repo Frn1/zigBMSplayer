@@ -52,7 +52,11 @@ pub fn main() !void {
     }
 
     // Path for the chart file
-    const chart_file_path = args[1];
+    const chart_file_path = std.fs.realpathAlloc(loading_allocator, args[1]) catch |e| {
+        std.debug.print("ERROR: Couldn't parse path ({!})\n", .{e});
+        std.process.exit(1);
+        return e;
+    };
 
     // Path for the song folder
     const song_folder_path = std.fs.path.dirname(args[1]) orelse try std.process.getCwdAlloc(loading_allocator);
@@ -156,7 +160,9 @@ pub fn main() !void {
         const last_object_processed_after = state.last_processed_object;
 
         if (state.last_processed_object == conductor.objects.len - 1) {
-            break;
+            if (sdl.Mix_Playing(-1) == 0) { // wait until all sounds stop to quit
+                break;
+            }
         }
 
         const visual_beat = state.calculateVisualPosition(state.current_beat);

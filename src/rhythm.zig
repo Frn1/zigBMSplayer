@@ -267,9 +267,9 @@ pub const ConductorState = struct {
                     },
                     else => {},
                 }
-                self.last_processed_object = i;
                 self.updateCurrentbeat(current_sec);
             }
+            self.last_processed_object = i;
         }
         self.updateCurrentbeat(current_sec);
     }
