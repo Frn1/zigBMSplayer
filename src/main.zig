@@ -5,6 +5,7 @@ const sdl = @cImport({
     @cInclude("SDL2/SDL_mixer.h");
     @cInclude("SDL2/SDL_ttf.h");
 });
+const sdl_utils = @import("sdl_utils.zig");
 
 const c = @import("consts.zig");
 const rhythm = @import("rhythm.zig");
@@ -22,21 +23,19 @@ pub fn main() !void {
     }
 
     // init sdl
-    try std.testing.expect(
-        sdl.SDL_Init(
-            @intCast(sdl.SDL_INIT_TIMER | sdl.SDL_INIT_AUDIO | sdl.SDL_INIT_VIDEO | sdl.SDL_INIT_EVENTS),
-        ) == 0,
-    );
+    try sdl_utils.sdlAssert(sdl.SDL_Init(
+        @intCast(sdl.SDL_INIT_TIMER | sdl.SDL_INIT_AUDIO | sdl.SDL_INIT_VIDEO | sdl.SDL_INIT_EVENTS),
+    ) == 0);
     defer sdl.SDL_Quit();
 
-    try std.testing.expect(sdl.TTF_Init() == 0);
+    try sdl_utils.sdlAssert(sdl.TTF_Init() == 0);
     defer sdl.TTF_Quit();
 
-    try std.testing.expect(sdl.Mix_Init(@intCast(sdl.MIX_INIT_OGG)) != 0);
+    try sdl_utils.sdlAssert(sdl.Mix_Init(@intCast(sdl.MIX_INIT_OGG)) != 0);
     defer sdl.Mix_Quit();
-    try std.testing.expect(sdl.Mix_OpenAudio(48000, sdl.MIX_DEFAULT_FORMAT, 2, 2048) == 0);
+    try sdl_utils.sdlAssert(sdl.Mix_OpenAudio(48000, sdl.MIX_DEFAULT_FORMAT, 2, 2048) == 0);
     defer sdl.Mix_CloseAudio();
-    try std.testing.expect(sdl.Mix_AllocateChannels(1295) == 1295);
+    try sdl_utils.sdlAssert(sdl.Mix_AllocateChannels(1295) == 1295);
 
     var scroll_speed_mul: f80 = 2.0;
 
@@ -46,14 +45,14 @@ pub fn main() !void {
 
     const args = try std.process.argsAlloc(loading_allocator);
     if (args.len < 2) {
-        std.debug.print("ERROR: Missing path\n", .{});
+        std.log.err("ERROR: Missing path\n", .{});
         std.process.exit(1);
         return error.ExpectedArgument;
     }
 
     // Path for the chart file
     const chart_file_path = std.fs.realpathAlloc(loading_allocator, args[1]) catch |e| {
-        std.debug.print("ERROR: Couldn't parse path ({!})\n", .{e});
+        std.log.err("ERROR: Couldn't parse path ({!})\n", .{e});
         std.process.exit(1);
         return e;
     };
@@ -62,7 +61,7 @@ pub fn main() !void {
     const song_folder_path = std.fs.path.dirname(args[1]) orelse try std.process.getCwdAlloc(loading_allocator);
 
     const chart_file = std.fs.openFileAbsolute(chart_file_path, std.fs.File.OpenFlags{}) catch |e| {
-        std.debug.print("ERROR: Couldn't open file ({!})\n", .{e});
+        std.log.err("ERROR: Couldn't open file ({!})\n", .{e});
         std.process.exit(1);
         return e;
     };
@@ -80,7 +79,7 @@ pub fn main() !void {
             0,
         ),
     ) catch |e| {
-        std.debug.print("ERROR: Couldn't load BMS File ({!})", .{e});
+        std.log.err("ERROR: Couldn't load BMS File ({!})", .{e});
         std.process.exit(1);
     };
     // Make sure to unload the keysounds
@@ -144,7 +143,7 @@ pub fn main() !void {
     main_loop: while (true) {
         // We dont care about "strictness" or "accuracy"
         // we just want something that runs quick lol
-        @setFloatMode(std.builtin.FloatMode.optimized);
+        // @setFloatMode(std.builtin.FloatMode.optimized);
 
         var frame_arena = std.heap.ArenaAllocator.init(main_allocator);
         defer frame_arena.deinit();
@@ -185,7 +184,7 @@ pub fn main() !void {
                 const keysound = conductor.keysounds[keysound_id];
                 if (keysound != null) {
                     _ = sdl.Mix_Volume(keysound_id, sdl.SDL_MIX_MAXVOLUME);
-                    try std.testing.expect(sdl.Mix_PlayChannel(keysound_id, conductor.keysounds[keysound_id], 0) == keysound_id);
+                    try sdl_utils.sdlAssert(sdl.Mix_PlayChannel(keysound_id, conductor.keysounds[keysound_id], 0) == keysound_id);
                 }
             }
         }
@@ -207,8 +206,8 @@ pub fn main() !void {
         defer sdl.SDL_RenderPresent(renderer);
         defer last_frame_end = sdl.SDL_GetPerformanceCounter();
 
-        try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF) == 0);
-        try std.testing.expect(sdl.SDL_RenderClear(renderer) == 0);
+        try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF) == 0);
+        try sdl_utils.sdlAssert(sdl.SDL_RenderClear(renderer) == 0);
 
         // Draw barlines BEFORE notes so they appear behind the notes
         for (conductor.objects, positions, 0..) |object, position, i| {
@@ -225,12 +224,12 @@ pub fn main() !void {
                 }
 
                 // change color to white
-                try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
+                try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
 
                 const segment = conductor.segments[conductor.objects[i].index];
                 switch (segment.type) {
                     .barline => {
-                        try std.testing.expect(sdl.SDL_RenderDrawLine(renderer, 0, render_y, c.note_width * 8, render_y) == 0);
+                        try sdl_utils.sdlAssert(sdl.SDL_RenderDrawLine(renderer, 0, render_y, c.note_width * 8, render_y) == 0);
                     },
                     else => {},
                 }
@@ -259,7 +258,7 @@ pub fn main() !void {
                 render_x *= c.note_width;
 
                 // change color to red
-                try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
+                try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
 
                 switch (note.type) {
                     .normal => {
@@ -270,15 +269,15 @@ pub fn main() !void {
                         switch (note.type.normal) {
                             .normal => {
                                 // change color to red
-                                try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
+                                try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
                             },
                             .mine => {
                                 // change color to yellow
-                                try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0x00, 0xFF) == 0);
+                                try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0x00, 0xFF) == 0);
                             },
                             .hidden => {
                                 // change color to blue
-                                try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0xFF, 0xFF) == 0);
+                                try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0xFF, 0xFF) == 0);
                             },
                         }
 
@@ -288,7 +287,7 @@ pub fn main() !void {
                             .w = c.note_width,
                             .h = c.note_height,
                         };
-                        try std.testing.expect(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
+                        try sdl_utils.sdlAssert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
                     },
                     .ln_head => {
                         var tail_render_y = @as(i32, @intFromFloat(
@@ -304,7 +303,7 @@ pub fn main() !void {
                             .w = c.note_width,
                             .h = render_y - tail_render_y,
                         };
-                        try std.testing.expect(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
+                        try sdl_utils.sdlAssert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
                     },
                     else => {},
                 }
@@ -312,8 +311,8 @@ pub fn main() !void {
         }
 
         // change color to white
-        try std.testing.expect(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
-        try std.testing.expect(sdl.SDL_RenderDrawLine(renderer, 0, c.judgement_line_y, c.note_width * 8, c.judgement_line_y) == 0);
+        try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
+        try sdl_utils.sdlAssert(sdl.SDL_RenderDrawLine(renderer, 0, c.judgement_line_y, c.note_width * 8, c.judgement_line_y) == 0);
 
         // draw text used for debuging
         const text: [:0]u8 = try frame_allocator.allocSentinel(u8, 64, 0);

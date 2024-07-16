@@ -385,7 +385,6 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []const u8, data: [:0
                                 if (output.keysounds[index] != null) {
                                     // we assert instead of expect here cuz we dont really care about this lol
                                     // so if were building for ReleaseFast/Safe we just say fuck
-                                    _ = sdl.Mix_Volume(-1, 0); // Set channel to volume 0
                                     std.debug.assert(sdl.Mix_PlayChannel(index, output.keysounds[index], 0) == index);
                                 }
                             }
