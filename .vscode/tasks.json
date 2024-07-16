@@ -5,7 +5,24 @@
           "label": "build",
           "type": "shell",
           "command": "zig build",
-          "problemMatcher": [],
+          "problemMatcher": [
+            {
+                "fileLocation": "absolute",
+                "pattern": [
+                    {
+                        "regexp": "^((?:[A-Z]:)?[^:]*)(?::)(\\d+)(?::)(\\d*)(?:: )([^:]*)(?:: )(.*)$",
+                        "file": 1,
+                        "line": 2,
+                        "column": 3,
+                        "severity": 4,
+                        "message": 5
+                    }
+                ],
+                "applyTo": "allDocuments",
+                "source": "Zig compiler",
+                "owner": "zig"
+            }
+          ],
           "group": {
               "kind": "build",
               "isDefault": true
