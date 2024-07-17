@@ -2,15 +2,18 @@ const std = @import("std");
 
 const sdl = @cImport({
     @cInclude("SDL2/SDL.h");
-    @cInclude("SDL2/SDL_mixer.h");
     @cInclude("SDL2/SDL_ttf.h");
 });
-const sdl_utils = @import("sdl_utils.zig");
+
+const miniaudio = @cImport({
+    @cInclude("miniaudio.h");
+});
 
 const c = @import("consts.zig");
 const rhythm = @import("rhythm.zig");
 const formats = @import("formats.zig");
 const gfx = @import("graphics.zig");
+const utils = @import("utils.zig");
 
 pub fn main() !void {
     // Main allocator we use
@@ -23,19 +26,20 @@ pub fn main() !void {
     }
 
     // init sdl
-    try sdl_utils.sdlAssert(sdl.SDL_Init(
-        @intCast(sdl.SDL_INIT_TIMER | sdl.SDL_INIT_AUDIO | sdl.SDL_INIT_VIDEO | sdl.SDL_INIT_EVENTS),
-    ) == 0);
+    try utils.sdlAssert(
+        sdl.SDL_Init(@intCast(sdl.SDL_INIT_TIMER | sdl.SDL_INIT_VIDEO | sdl.SDL_INIT_EVENTS)) == 0,
+    );
     defer sdl.SDL_Quit();
 
-    try sdl_utils.sdlAssert(sdl.TTF_Init() == 0);
+    try utils.sdlAssert(sdl.TTF_Init() == 0);
     defer sdl.TTF_Quit();
 
-    try sdl_utils.sdlAssert(sdl.Mix_Init(@intCast(sdl.MIX_INIT_OGG)) != 0);
-    defer sdl.Mix_Quit();
-    try sdl_utils.sdlAssert(sdl.Mix_OpenAudio(48000, sdl.MIX_DEFAULT_FORMAT, 2, 2048) == 0);
-    defer sdl.Mix_CloseAudio();
-    try sdl_utils.sdlAssert(sdl.Mix_AllocateChannels(1295) == 1295);
+    var engine: miniaudio.ma_engine = undefined;
+
+    if (miniaudio.ma_engine_init(null, &engine) != miniaudio.MA_SUCCESS) {
+        utils.showError("Miniaudio error!", "Couldn't initialize miniaudio");
+        return error.MiniaudioError; // Failed to initialize the engine.
+    }
 
     var scroll_speed_mul: f80 = 2.0;
 
@@ -83,9 +87,9 @@ pub fn main() !void {
         std.process.exit(1);
     };
     // Make sure to unload the keysounds
-    defer for (conductor.keysounds) |sound| {
-        sdl.Mix_FreeChunk(sound);
-    };
+    // defer for (conductor.keysounds) |sound| {
+    //     sdl.Mix_FreeChunk(sound);
+    // };
     // Make sure to free the chart data
     defer main_allocator.free(conductor.notes);
     defer main_allocator.free(conductor.segments);
@@ -158,19 +162,19 @@ pub fn main() !void {
         state.process(conductor, current_time);
         const last_object_processed_after = state.last_processed_object;
 
-        if (state.last_processed_object == conductor.objects.len - 1) {
-            if (sdl.Mix_Playing(-1) == 0) { // wait until all sounds stop to quit
-                break; // Quit the program
-            } else {
-                for (0..1295) |channel| {
-                    if (sdl.Mix_Playing(@intCast(channel)) != 0 and sdl.Mix_Volume(@intCast(channel), -1) != 0) {
-                        break; // If a sound is still playing (and has volume), break
-                    }
-                } else {
-                    break :main_loop; // Quit the program
-                }
-            }
-        }
+        // if (state.last_processed_object == conductor.objects.len - 1) {
+        //     if (sdl.Mix_Playing(-1) == 0) { // wait until all sounds stop to quit
+        //         break; // Quit the program
+        //     } else {
+        //         for (0..1295) |channel| {
+        //             if (sdl.Mix_Playing(@intCast(channel)) != 0 and sdl.Mix_Volume(@intCast(channel), -1) != 0) {
+        //                 break; // If a sound is still playing (and has volume), break
+        //             }
+        //         } else {
+        //             break :main_loop; // Quit the program
+        //         }
+        //     }
+        // }
 
         const visual_beat = state.calculateVisualPosition(state.current_beat);
 
@@ -180,12 +184,12 @@ pub fn main() !void {
                 if (conductor.notes[object.index].type == .ln_tail) {
                     continue; // avoid playing the tail keysounds
                 }
-                const keysound_id = conductor.notes[object.index].keysound_id - 1;
-                const keysound = conductor.keysounds[keysound_id];
-                if (keysound != null) {
-                    _ = sdl.Mix_Volume(keysound_id, sdl.SDL_MIX_MAXVOLUME);
-                    try sdl_utils.sdlAssert(sdl.Mix_PlayChannel(keysound_id, conductor.keysounds[keysound_id], 0) == keysound_id);
-                }
+                // const keysound_id = conductor.notes[object.index].keysound_id - 1;
+                // const keysound = conductor.keysounds[keysound_id];
+                // if (keysound != null) {
+                //     _ = sdl.Mix_Volume(keysound_id, sdl.SDL_MIX_MAXVOLUME);
+                //     try utils.sdlAssert(sdl.Mix_PlayChannel(keysound_id, conductor.keysounds[keysound_id], 0) == keysound_id);
+                // }
             }
         }
 
@@ -206,8 +210,8 @@ pub fn main() !void {
         defer sdl.SDL_RenderPresent(renderer);
         defer last_frame_end = sdl.SDL_GetPerformanceCounter();
 
-        try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF) == 0);
-        try sdl_utils.sdlAssert(sdl.SDL_RenderClear(renderer) == 0);
+        try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF) == 0);
+        try utils.sdlAssert(sdl.SDL_RenderClear(renderer) == 0);
 
         // Draw barlines BEFORE notes so they appear behind the notes
         for (conductor.objects, positions, 0..) |object, position, i| {
@@ -224,12 +228,12 @@ pub fn main() !void {
                 }
 
                 // change color to white
-                try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
+                try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
 
                 const segment = conductor.segments[conductor.objects[i].index];
                 switch (segment.type) {
                     .barline => {
-                        try sdl_utils.sdlAssert(sdl.SDL_RenderDrawLine(renderer, 0, render_y, c.note_width * 8, render_y) == 0);
+                        try utils.sdlAssert(sdl.SDL_RenderDrawLine(renderer, 0, render_y, c.note_width * 8, render_y) == 0);
                     },
                     else => {},
                 }
@@ -258,7 +262,7 @@ pub fn main() !void {
                 render_x *= c.note_width;
 
                 // change color to red
-                try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
+                try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
 
                 switch (note.type) {
                     .normal => {
@@ -269,15 +273,15 @@ pub fn main() !void {
                         switch (note.type.normal) {
                             .normal => {
                                 // change color to red
-                                try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
+                                try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
                             },
                             .mine => {
                                 // change color to yellow
-                                try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0x00, 0xFF) == 0);
+                                try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0x00, 0xFF) == 0);
                             },
                             .hidden => {
                                 // change color to blue
-                                try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0xFF, 0xFF) == 0);
+                                try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0xFF, 0xFF) == 0);
                             },
                         }
 
@@ -287,7 +291,7 @@ pub fn main() !void {
                             .w = c.note_width,
                             .h = c.note_height,
                         };
-                        try sdl_utils.sdlAssert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
+                        try utils.sdlAssert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
                     },
                     .ln_head => {
                         var tail_render_y = @as(i32, @intFromFloat(
@@ -303,7 +307,7 @@ pub fn main() !void {
                             .w = c.note_width,
                             .h = render_y - tail_render_y,
                         };
-                        try sdl_utils.sdlAssert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
+                        try utils.sdlAssert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
                     },
                     else => {},
                 }
@@ -311,8 +315,8 @@ pub fn main() !void {
         }
 
         // change color to white
-        try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
-        try sdl_utils.sdlAssert(sdl.SDL_RenderDrawLine(renderer, 0, c.judgement_line_y, c.note_width * 8, c.judgement_line_y) == 0);
+        try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
+        try utils.sdlAssert(sdl.SDL_RenderDrawLine(renderer, 0, c.judgement_line_y, c.note_width * 8, c.judgement_line_y) == 0);
 
         // draw text used for debuging
         const text: [:0]u8 = try frame_allocator.allocSentinel(u8, 64, 0);

@@ -60,11 +60,15 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
         .link_libc = true,
+        .linkage = .dynamic,
     });
 
     try addSDLLibrary("SDL2", b, target, exe);
     try addSDLLibrary("SDL2_mixer", b, target, exe);
     try addSDLLibrary("SDL2_ttf", b, target, exe);
+
+    const dependency = b.dependency("miniaudio", .{});
+    exe.addIncludePath(dependency.path("."));
 
     const install = b.getInstallStep();
     const install_data = b.addInstallDirectory(
