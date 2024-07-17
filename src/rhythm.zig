@@ -5,8 +5,11 @@ const gfx = @import("graphics.zig");
 
 const sdl = @cImport({
     @cInclude("SDL2/SDL.h");
-    @cInclude("SDL2/SDL_mixer.h");
     @cInclude("SDL2/SDL_ttf.h");
+});
+const ma = @cImport({
+    @cDefine("MINIAUDIO_IMPLEMENTATION", {});
+    @cInclude("miniaudio.h");
 });
 
 pub const NormalNoteTypeTag = enum { normal, mine, hidden };
@@ -64,7 +67,7 @@ pub const Conductor = struct {
     objects: []Object = undefined,
 
     // 1295 = ZZ = max value in BMS
-    keysounds: [1295]?*sdl.Mix_Chunk = .{null} ** 1295,
+    keysounds: [1295]?*ma.ma_sound = .{null} ** 1295,
 
     pub const ObjectType = enum { Note, Segment };
 

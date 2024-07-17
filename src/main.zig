@@ -5,7 +5,8 @@ const sdl = @cImport({
     @cInclude("SDL2/SDL_ttf.h");
 });
 
-const miniaudio = @cImport({
+const ma = @cImport({
+    @cDefine("MINIAUDIO_IMPLEMENTATION", {});
     @cInclude("miniaudio.h");
 });
 
@@ -34,10 +35,10 @@ pub fn main() !void {
     try utils.sdlAssert(sdl.TTF_Init() == 0);
     defer sdl.TTF_Quit();
 
-    var engine: miniaudio.ma_engine = undefined;
-
-    if (miniaudio.ma_engine_init(null, &engine) != miniaudio.MA_SUCCESS) {
-        utils.showError("Miniaudio error!", "Couldn't initialize miniaudio");
+    const ma_engine: *ma.ma_engine = try main_allocator.create(ma.ma_engine);
+    defer main_allocator.destroy(ma_engine);
+    if (ma.ma_engine_init(null, ma_engine) != ma.MA_SUCCESS) {
+        utils.showError("Miniaudio error!\u{0000}", "Couldn't initialize miniaudio\u{0000}");
         return error.MiniaudioError; // Failed to initialize the engine.
     }
 
@@ -74,6 +75,7 @@ pub fn main() !void {
     // TODO: Multiple conductors/timing groups???
     var conductor = formats.compileBMS(
         main_allocator,
+        ma_engine,
         song_folder_path,
         try chart_file.readToEndAllocOptions(
             loading_allocator,
@@ -82,9 +84,10 @@ pub fn main() !void {
             1,
             0,
         ),
-    ) catch |e| {
-        std.log.err("ERROR: Couldn't load BMS File ({!})", .{e});
-        std.process.exit(1);
+    ) catch {
+        unreachable;
+        // std.log.err("ERROR: Couldn't load BMS File ({!})", .{e});
+        // std.process.exit(1);
     };
     // Make sure to unload the keysounds
     // defer for (conductor.keysounds) |sound| {
@@ -184,12 +187,12 @@ pub fn main() !void {
                 if (conductor.notes[object.index].type == .ln_tail) {
                     continue; // avoid playing the tail keysounds
                 }
-                // const keysound_id = conductor.notes[object.index].keysound_id - 1;
-                // const keysound = conductor.keysounds[keysound_id];
-                // if (keysound != null) {
-                //     _ = sdl.Mix_Volume(keysound_id, sdl.SDL_MIX_MAXVOLUME);
-                //     try utils.sdlAssert(sdl.Mix_PlayChannel(keysound_id, conductor.keysounds[keysound_id], 0) == keysound_id);
-                // }
+                const keysound_id = conductor.notes[object.index].keysound_id - 1;
+                const keysound = &conductor.keysounds[keysound_id];
+                if (keysound.* != null) {
+                    _ = ma.ma_sound_seek_to_pcm_frame(@ptrCast(keysound), 0);
+                    _ = ma.ma_sound_start(@ptrCast(keysound));
+                }
             }
         }
 
