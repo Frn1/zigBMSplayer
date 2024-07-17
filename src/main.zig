@@ -319,18 +319,18 @@ pub fn main() !void {
 
         _ = try std.fmt.bufPrint(text, "B   {d:.3}   {d:.3}\u{0000}", .{ state.current_beat, 60.0 / state.current_sec_per_beat });
 
-        try gfx.draw_text(text, renderer, 0, 24 * 0, debug_font);
+        try gfx.drawText(text, renderer, 0, 24 * 0, debug_font);
 
         _ = try std.fmt.bufPrint(text, "VB  {d:.3}  x{d:.3}\u{0000}", .{ visual_beat, state.current_scroll_mul });
-        try gfx.draw_text(text, renderer, 0, 24 * 1, debug_font);
+        try gfx.drawText(text, renderer, 0, 24 * 1, debug_font);
 
         _ = try std.fmt.bufPrint(text, "FPS {d:.3}\u{0000}", .{performance_frequency / @as(
             f80,
             @floatFromInt(sdl.SDL_GetPerformanceCounter() - last_frame_end),
         )});
-        try gfx.draw_text(text, renderer, 0, 24 * 2, debug_font);
+        try gfx.drawText(text, renderer, 0, 24 * 2, debug_font);
 
         _ = try std.fmt.bufPrint(text, "SC  {d:.1}\u{0000}", .{scroll_speed_mul});
-        try gfx.draw_text(text, renderer, 0, 24 * 3, debug_font);
+        try gfx.drawText(text, renderer, 0, 24 * 3, debug_font);
     }
 }
