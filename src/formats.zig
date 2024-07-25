@@ -2,11 +2,15 @@ const std = @import("std");
 
 const rhythm = @import("rhythm.zig");
 const gfx = @import("graphics.zig");
+const utils = @import("utils.zig");
 
 const sdl = @cImport({
     @cInclude("SDL2/SDL.h");
-    @cInclude("SDL2/SDL_mixer.h");
     @cInclude("SDL2/SDL_ttf.h");
+});
+const ma = @cImport({
+    @cDefine("MINIAUDIO_IMPLEMENTATION", {});
+    @cInclude("miniaudio.h");
 });
 
 fn resetCurrentKeyValue(allocator: std.mem.Allocator, current_key: *[]u8, current_value: *[]u8) !void {
@@ -17,7 +21,7 @@ fn resetCurrentKeyValue(allocator: std.mem.Allocator, current_key: *[]u8, curren
     current_value.* = try allocator.alloc(u8, 0);
 }
 
-fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []const u8, directory: std.fs.Dir, directory_path: []const u8, output: *?*sdl.Mix_Chunk) !void {
+fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []const u8, directory: std.fs.Dir, ma_engine: [*c]ma.ma_engine, output: *?*ma.ma_sound) !void {
     const filename_stem = std.fs.path.stem(filename);
     const filename_dirname = std.fs.path.dirname(filename);
 
@@ -47,22 +51,35 @@ fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []const u8, direct
     });
     defer arena_allocator.free(filename_wav);
 
+    const directory_path = try directory.realpathAlloc(arena_allocator, ".");
+
+    const flags = ma.MA_SOUND_FLAG_DECODE;
+
     if (directory.access(filename, std.fs.File.OpenFlags{})) {
         const path = try std.fs.path.joinZ(arena_allocator, &[_][]const u8{ directory_path, filename });
         defer arena_allocator.free(path);
-        output.* = sdl.Mix_LoadWAV(path);
+        const result = ma.ma_sound_init_from_file(ma_engine, path, flags, null, null, output.*);
+        if (result != ma.MA_SUCCESS) {
+            return error.AudioLoadingError;
+        }
     } else |err| switch (err) {
         error.FileNotFound => {
             if (directory.access(filename_ogg, std.fs.File.OpenFlags{})) {
                 const path = try std.fs.path.joinZ(arena_allocator, &[_][]const u8{ directory_path, filename_ogg });
                 defer arena_allocator.free(path);
-                output.* = sdl.Mix_LoadWAV(path);
+                const result = ma.ma_sound_init_from_file(ma_engine, path, flags, null, null, output.*);
+                if (result != ma.MA_SUCCESS) {
+                    return error.AudioLoadingError;
+                }
             } else |err2| switch (err2) {
                 error.FileNotFound => {
                     if (directory.access(filename_wav, std.fs.File.OpenFlags{})) {
                         const path = try std.fs.path.joinZ(arena_allocator, &[_][]const u8{ directory_path, filename_wav });
                         defer arena_allocator.free(path);
-                        output.* = sdl.Mix_LoadWAV(path);
+                        const result = ma.ma_sound_init_from_file(ma_engine, path, flags, null, null, output.*);
+                        if (result != ma.MA_SUCCESS) {
+                            return error.AudioLoadingError;
+                        }
                     } else |err3| switch (err3) {
                         error.FileNotFound => {
                             std.debug.print("Missing keysound {s}\n", .{filename_no_ext});
@@ -77,7 +94,7 @@ fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []const u8, direct
     }
 }
 
-pub fn compileBMS(allocator: std.mem.Allocator, directory: []const u8, data: [:0]const u8) !rhythm.Conductor {
+pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, directory: []const u8, data: [:0]const u8) !rhythm.Conductor {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
@@ -368,27 +385,30 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []const u8, data: [:0
                                 @memcpy(filenameCopy, current_value);
 
                                 if (output.keysounds[index] != null) {
-                                    // if there is a sound already loaded in that channel, stop and unload it
-                                    // std.debug.assert(sdl.Mix_HaltChannel(index) == 0);
-                                    sdl.Mix_FreeChunk(output.keysounds[index]);
+                                    // if there is a sound already loaded in that place, unload it so we dont cause a memory leak
+                                    allocator.destroy(output.keysounds[index].?);
+                                    ma.ma_sound_uninit(output.keysounds[index].?);
+                                    output.keysounds[index] = null;
                                 }
 
-                                try loadKeysound(
+                                output.keysounds[index] = try allocator.create(ma.ma_sound);
+
+                                loadKeysound(
                                     arena_allocator,
                                     filenameCopy,
                                     open_directory,
-                                    directory,
+                                    ma_engine,
                                     &output.keysounds[index],
-                                );
-
-                                // preload sound into channel i guess????
-                                // idk but sdl seems to take some time before playing the sound
-                                // so we just play it and immediatly halt it so that it like preloads??? idk
-                                if (output.keysounds[index] != null) {
-                                    // we assert instead of expect here cuz we dont really care about this lol
-                                    // so if were building for ReleaseFast/Safe we just say fuck
-                                    // std.debug.assert(sdl.Mix_PlayChannel(index, output.keysounds[index], 0) == index);
-                                }
+                                ) catch |e| {
+                                    utils.showError(
+                                        "Couldn't load keysound",
+                                        try std.fmt.allocPrintZ(
+                                            arena_allocator,
+                                            "Keysound with id {d} at path {s} failed to load\n{!}",
+                                            .{ index, filenameCopy, e },
+                                        ),
+                                    );
+                                };
                             }
                         }
                     }

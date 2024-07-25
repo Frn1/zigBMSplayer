@@ -36,8 +36,6 @@ fn addSDLLibrary(name: []const u8, b: *std.Build, target: std.Build.ResolvedTarg
         install.dependOn(&install_data.step);
     }
 
-    std.debug.print("{s}\n", .{name});
-
     exe.linkSystemLibrary(name);
 }
 
@@ -45,15 +43,8 @@ fn addSDLLibrary(name: []const u8, b: *std.Build, target: std.Build.ResolvedTarg
 // declaratively construct a build graph that will be executed by an external
 // runner.
 pub fn build(b: *std.Build) !void {
-    // Standard target options allows the person running `zig build` to choose
-    // what target to build for. Here we do not override the defaults, which
-    // means any target is allowed, and the default is native. Other options
-    // for restricting supported target set are available.
     const target = b.standardTargetOptions(.{});
 
-    // Standard optimization options allow the person running `zig build` to select
-    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
-    // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
     const exe = b.addExecutable(.{
@@ -72,8 +63,11 @@ pub fn build(b: *std.Build) !void {
     }
 
     try addSDLLibrary("SDL2", b, target, exe);
-    try addSDLLibrary("SDL2_mixer", b, target, exe);
     try addSDLLibrary("SDL2_ttf", b, target, exe);
+
+    exe.addSystemIncludePath(.{ .cwd_relative = "miniaudio/extras/miniaudio_split/" });
+
+    exe.addObjectFile(.{ .cwd_relative = ".zig-cache/precompiled/miniaudio.o" });
 
     const install = b.getInstallStep();
     const install_data = b.addInstallDirectory(

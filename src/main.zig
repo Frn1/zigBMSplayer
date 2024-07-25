@@ -2,15 +2,20 @@ const std = @import("std");
 
 const sdl = @cImport({
     @cInclude("SDL2/SDL.h");
-    @cInclude("SDL2/SDL_mixer.h");
     @cInclude("SDL2/SDL_ttf.h");
 });
-const sdl_utils = @import("sdl_utils.zig");
+
+const ma = @cImport({
+    @cDefine("MINIAUDIO_IMPLEMENTATION", {});
+    @cInclude("miniaudio.h");
+});
 
 const c = @import("consts.zig");
 const rhythm = @import("rhythm.zig");
 const formats = @import("formats.zig");
 const gfx = @import("graphics.zig");
+const utils = @import("utils.zig");
+const audio = @import("audio.zig");
 
 pub fn main() !void {
     // Main allocator we use
@@ -23,19 +28,21 @@ pub fn main() !void {
     }
 
     // init sdl
-    try sdl_utils.sdlAssert(sdl.SDL_Init(
-        @intCast(sdl.SDL_INIT_TIMER | sdl.SDL_INIT_AUDIO | sdl.SDL_INIT_VIDEO | sdl.SDL_INIT_EVENTS),
-    ) == 0);
+    try utils.sdlAssert(
+        sdl.SDL_Init(@intCast(sdl.SDL_INIT_TIMER | sdl.SDL_INIT_VIDEO | sdl.SDL_INIT_EVENTS)) == 0,
+    );
     defer sdl.SDL_Quit();
 
-    try sdl_utils.sdlAssert(sdl.TTF_Init() == 0);
+    try utils.sdlAssert(sdl.TTF_Init() == 0);
     defer sdl.TTF_Quit();
 
-    try sdl_utils.sdlAssert(sdl.Mix_Init(@intCast(sdl.MIX_INIT_OGG)) != 0);
-    defer sdl.Mix_Quit();
-    try sdl_utils.sdlAssert(sdl.Mix_OpenAudio(48000, sdl.MIX_DEFAULT_FORMAT, 2, 2048) == 0);
-    defer sdl.Mix_CloseAudio();
-    try sdl_utils.sdlAssert(sdl.Mix_AllocateChannels(1295) == 1295);
+    // init miniaudio
+    const ma_engine: *ma.ma_engine = try main_allocator.create(ma.ma_engine);
+    defer main_allocator.destroy(ma_engine);
+    if (ma.ma_engine_init(null, ma_engine) != ma.MA_SUCCESS) {
+        utils.showError("Miniaudio error!\u{0000}", "Couldn't initialize miniaudio\u{0000}");
+        return error.MiniaudioError; // Failed to initialize the engine.
+    }
 
     var scroll_speed_mul: f80 = 2.0;
 
@@ -70,6 +77,7 @@ pub fn main() !void {
     // TODO: Multiple conductors/timing groups???
     var conductor = formats.compileBMS(
         main_allocator,
+        ma_engine,
         song_folder_path,
         try chart_file.readToEndAllocOptions(
             loading_allocator,
@@ -78,14 +86,19 @@ pub fn main() !void {
             1,
             0,
         ),
-    ) catch |e| {
-        std.log.err("ERROR: Couldn't load BMS File ({!})", .{e});
-        std.process.exit(1);
+    ) catch {
+        unreachable;
+        // std.log.err("ERROR: Couldn't load BMS File ({!})", .{e});
+        // std.process.exit(1);
     };
     // Make sure to unload the keysounds
     defer for (conductor.keysounds) |sound| {
-        sdl.Mix_FreeChunk(sound);
+        if (sound != null) {
+            ma.ma_sound_uninit(sound);
+            main_allocator.destroy(sound.?);
+        }
     };
+
     // Make sure to free the chart data
     defer main_allocator.free(conductor.notes);
     defer main_allocator.free(conductor.segments);
@@ -139,54 +152,19 @@ pub fn main() !void {
     // used for fps
     var last_frame_end = sdl.SDL_GetPerformanceCounter();
 
+    var audio_stop_flag = false;
+    const audioThread = try std.Thread.spawn(.{ .allocator = main_allocator }, audio.audioThread, .{
+        &conductor,
+        start_tick,
+        &audio_stop_flag,
+    });
+    defer audioThread.join();
+    defer audio_stop_flag = true;
+
     // Event loop
     main_loop: while (true) {
-        // We dont care about "strictness" or "accuracy"
-        // we just want something that runs quick lol
-        // @setFloatMode(std.builtin.FloatMode.optimized);
-
-        var frame_arena = std.heap.ArenaAllocator.init(main_allocator);
-        defer frame_arena.deinit();
-        const frame_allocator = frame_arena.allocator();
-
-        // current sdl performance tick (with start_performance_ticks already subtracted)
-        const current_performance_ticks = sdl.SDL_GetPerformanceCounter() - start_tick;
-        const current_time: f80 = @as(f80, @floatFromInt(current_performance_ticks)) / performance_frequency;
-
-        // update game state
-        const last_object_processed_before = state.last_processed_object;
-        state.process(conductor, current_time);
-        const last_object_processed_after = state.last_processed_object;
-
-        if (state.last_processed_object == conductor.objects.len - 1) {
-            if (sdl.Mix_Playing(-1) == 0) { // wait until all sounds stop to quit
-                break; // Quit the program
-            } else {
-                for (0..1295) |channel| {
-                    if (sdl.Mix_Playing(@intCast(channel)) != 0 and sdl.Mix_Volume(@intCast(channel), -1) != 0) {
-                        break; // If a sound is still playing (and has volume), break
-                    }
-                } else {
-                    break :main_loop; // Quit the program
-                }
-            }
-        }
-
-        const visual_beat = state.calculateVisualPosition(state.current_beat);
-
-        for (last_object_processed_before..last_object_processed_after) |i| {
-            const object = conductor.objects[i];
-            if (object.obj_type == rhythm.Conductor.ObjectType.Note) {
-                if (conductor.notes[object.index].type == .ln_tail) {
-                    continue; // avoid playing the tail keysounds
-                }
-                const keysound_id = conductor.notes[object.index].keysound_id - 1;
-                const keysound = conductor.keysounds[keysound_id];
-                if (keysound != null) {
-                    _ = sdl.Mix_Volume(keysound_id, sdl.SDL_MIX_MAXVOLUME);
-                    try sdl_utils.sdlAssert(sdl.Mix_PlayChannel(keysound_id, conductor.keysounds[keysound_id], 0) == keysound_id);
-                }
-            }
+        if (sdl.SDL_GetPerformanceCounter() - last_frame_end < sdl.SDL_GetPerformanceFrequency() / 5) {
+            continue;
         }
 
         // handle events
@@ -202,12 +180,41 @@ pub fn main() !void {
                 else => {},
             }
         }
+        
+        // We dont care about "strictness" or "accuracy"
+        // we just want something that runs quick lol
+        @setFloatMode(std.builtin.FloatMode.optimized);
+
+        var frame_arena = std.heap.ArenaAllocator.init(main_allocator);
+        defer frame_arena.deinit();
+        const frame_allocator = frame_arena.allocator();
+
+        // current sdl performance tick (with start_tick already subtracted)
+        const current_performance_ticks = sdl.SDL_GetPerformanceCounter() - start_tick;
+        const current_time: f80 = @as(f80, @floatFromInt(current_performance_ticks)) / performance_frequency;
+
+        // update game state
+        state.process(conductor, current_time);
+
+        if (state.last_processed_object == conductor.objects.len - 1) {
+            for (0..1295) |channel| {
+                if (conductor.keysounds[channel] != null) {
+                    if (ma.ma_sound_is_playing(conductor.keysounds[channel]) == ma.MA_TRUE) {
+                        break; // If a sound is still playing, break the inner loop so we dont quit
+                    }
+                }
+            } else {
+                break :main_loop; // Quit the program (the outer loop)
+            }
+        }
+
+        const visual_beat = state.calculateVisualPosition(state.current_beat);
 
         defer sdl.SDL_RenderPresent(renderer);
         defer last_frame_end = sdl.SDL_GetPerformanceCounter();
 
-        try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF) == 0);
-        try sdl_utils.sdlAssert(sdl.SDL_RenderClear(renderer) == 0);
+        try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF) == 0);
+        try utils.sdlAssert(sdl.SDL_RenderClear(renderer) == 0);
 
         // Draw barlines BEFORE notes so they appear behind the notes
         for (conductor.objects, positions, 0..) |object, position, i| {
@@ -224,12 +231,12 @@ pub fn main() !void {
                 }
 
                 // change color to white
-                try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
+                try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
 
                 const segment = conductor.segments[conductor.objects[i].index];
                 switch (segment.type) {
                     .barline => {
-                        try sdl_utils.sdlAssert(sdl.SDL_RenderDrawLine(renderer, 0, render_y, c.note_width * 8, render_y) == 0);
+                        try utils.sdlAssert(sdl.SDL_RenderDrawLine(renderer, 0, render_y, c.note_width * 8, render_y) == 0);
                     },
                     else => {},
                 }
@@ -258,7 +265,7 @@ pub fn main() !void {
                 render_x *= c.note_width;
 
                 // change color to red
-                try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
+                try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
 
                 switch (note.type) {
                     .normal => {
@@ -269,15 +276,15 @@ pub fn main() !void {
                         switch (note.type.normal) {
                             .normal => {
                                 // change color to red
-                                try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
+                                try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
                             },
                             .mine => {
                                 // change color to yellow
-                                try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0x00, 0xFF) == 0);
+                                try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0x00, 0xFF) == 0);
                             },
                             .hidden => {
                                 // change color to blue
-                                try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0xFF, 0xFF) == 0);
+                                try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0xFF, 0xFF) == 0);
                             },
                         }
 
@@ -287,7 +294,7 @@ pub fn main() !void {
                             .w = c.note_width,
                             .h = c.note_height,
                         };
-                        try sdl_utils.sdlAssert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
+                        try utils.sdlAssert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
                     },
                     .ln_head => {
                         var tail_render_y = @as(i32, @intFromFloat(
@@ -303,7 +310,7 @@ pub fn main() !void {
                             .w = c.note_width,
                             .h = render_y - tail_render_y,
                         };
-                        try sdl_utils.sdlAssert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
+                        try utils.sdlAssert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
                     },
                     else => {},
                 }
@@ -311,8 +318,8 @@ pub fn main() !void {
         }
 
         // change color to white
-        try sdl_utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
-        try sdl_utils.sdlAssert(sdl.SDL_RenderDrawLine(renderer, 0, c.judgement_line_y, c.note_width * 8, c.judgement_line_y) == 0);
+        try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
+        try utils.sdlAssert(sdl.SDL_RenderDrawLine(renderer, 0, c.judgement_line_y, c.note_width * 8, c.judgement_line_y) == 0);
 
         // draw text used for debuging
         const text: [:0]u8 = try frame_allocator.allocSentinel(u8, 64, 0);
