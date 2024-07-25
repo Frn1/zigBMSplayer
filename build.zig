@@ -13,26 +13,30 @@ fn addSDLLibrary(name: []const u8, b: *std.Build, target: std.Build.ResolvedTarg
     const bin_path = try std.fs.path.join(allocator, &.{ sdl_triple, "bin" });
     const lib_path = try std.fs.path.join(allocator, &.{ sdl_triple, "lib" });
 
-    const sys_lib_name = try std.mem.join(allocator, ".", &.{ name, "dll" });
-    const sys_lib_path = try std.fs.path.join(allocator, &.{ bin_path, sys_lib_name });
-
     const dependency = b.dependency(name, .{});
     exe.addIncludePath(dependency.path(include_path));
     exe.addIncludePath(dependency.path(include_name_path));
     exe.addLibraryPath(dependency.path(bin_path));
     exe.addLibraryPath(dependency.path(lib_path));
 
-    const install = b.getInstallStep();
-    const install_data = b.addInstallBinFile(
-        .{
-            .dependency = .{
-                .dependency = dependency,
-                .sub_path = sys_lib_path,
+    if (target.result.isMinGW()) {
+        const sys_lib_name = try std.mem.join(allocator, ".", &.{ name, "dll" });
+        const sys_lib_path = try std.fs.path.join(allocator, &.{ bin_path, sys_lib_name });
+
+        const install = b.getInstallStep();
+        const install_data = b.addInstallBinFile(
+            .{
+                .dependency = .{
+                    .dependency = dependency,
+                    .sub_path = sys_lib_path,
+                },
             },
-        },
-        sys_lib_name,
-    );
-    install.dependOn(&install_data.step);
+            sys_lib_name,
+        );
+        install.dependOn(&install_data.step);
+    }
+
+    std.debug.print("{s}\n", .{name});
 
     exe.linkSystemLibrary(name);
 }
@@ -55,6 +59,10 @@ pub fn build(b: *std.Build) !void {
         .link_libc = true,
         .linkage = .dynamic,
     });
+
+    if (target.result.isMinGW() == false) {
+        exe.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
+    }
 
     try addSDLLibrary("SDL2", b, target, exe);
     try addSDLLibrary("SDL2_ttf", b, target, exe);

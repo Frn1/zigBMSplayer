@@ -181,7 +181,9 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
         }
     }, 80);
 
-    const open_directory = try std.fs.openDirAbsolute(directory, std.fs.Dir.OpenDirOptions{});
+    const directory_realpath = try std.fs.cwd().realpathAlloc(allocator, directory);
+    defer allocator.free(directory_realpath);
+    const open_directory = try std.fs.openDirAbsolute(directory_realpath, std.fs.Dir.OpenDirOptions{});
     // var keysoundThreads: [1295]?std.Thread = .{null} ** 1295;
 
     var initial_bpm: f64 = 0.0;

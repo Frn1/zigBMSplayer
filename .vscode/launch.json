@@ -5,7 +5,7 @@
             "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/zig-out/bin/rhythmicZig.exe",
+            "program": "${workspaceFolder}/zig-out/bin/rhythmicZig",
             "args": ["bms/Moonlit_Operation_ogg/_Moonlit_Operation_SPI.bms"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/zig-out",
