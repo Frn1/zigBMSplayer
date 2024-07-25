@@ -262,7 +262,7 @@ pub fn main() !void {
 
                 switch (note.type) {
                     .normal => {
-                        if (render_y > c.screen_height + c.note_height) {
+                        if (render_y > c.screen_height) {
                             continue;
                         }
 
@@ -294,7 +294,7 @@ pub fn main() !void {
                             (visual_beat - positions[position.ln_tail_obj_index.?].visual_beat) * scroll_speed_mul * c.beat_height,
                         ));
                         tail_render_y += c.judgement_line_y;
-                        if (tail_render_y > c.screen_height + c.note_height) {
+                        if (tail_render_y > c.screen_height) {
                             continue;
                         }
                         const note_rect: sdl.SDL_Rect = sdl.SDL_Rect{

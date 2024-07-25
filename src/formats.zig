@@ -166,7 +166,9 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []const u8, data: [:0
         }
     }, 80);
 
-    const open_directory = try std.fs.openDirAbsolute(directory, std.fs.Dir.OpenDirOptions{});
+    const directory_realpath = try std.fs.cwd().realpathAlloc(allocator, directory);
+    defer allocator.free(directory_realpath);
+    const open_directory = try std.fs.openDirAbsolute(directory_realpath, std.fs.Dir.OpenDirOptions{});
     // var keysoundThreads: [1295]?std.Thread = .{null} ** 1295;
 
     var initial_bpm: f64 = 0.0;
@@ -367,7 +369,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []const u8, data: [:0
 
                                 if (output.keysounds[index] != null) {
                                     // if there is a sound already loaded in that channel, stop and unload it
-                                    std.debug.assert(sdl.Mix_HaltChannel(index) == 0);
+                                    // std.debug.assert(sdl.Mix_HaltChannel(index) == 0);
                                     sdl.Mix_FreeChunk(output.keysounds[index]);
                                 }
 
@@ -385,7 +387,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, directory: []const u8, data: [:0
                                 if (output.keysounds[index] != null) {
                                     // we assert instead of expect here cuz we dont really care about this lol
                                     // so if were building for ReleaseFast/Safe we just say fuck
-                                    std.debug.assert(sdl.Mix_PlayChannel(index, output.keysounds[index], 0) == index);
+                                    // std.debug.assert(sdl.Mix_PlayChannel(index, output.keysounds[index], 0) == index);
                                 }
                             }
                         }
