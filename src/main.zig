@@ -163,13 +163,27 @@ pub fn main() !void {
 
     // Event loop
     main_loop: while (true) {
-        if (sdl.SDL_GetPerformanceCounter() - last_frame_end < (6 * sdl.SDL_GetPerformanceFrequency()) / 1000) {
+        if (sdl.SDL_GetPerformanceCounter() - last_frame_end < sdl.SDL_GetPerformanceFrequency() / 5) {
             continue;
         }
 
+        // handle events
+        var event: sdl.SDL_Event = undefined;
+        while (sdl.SDL_PollEvent(&event) > 0) {
+            switch (event.type) {
+                sdl.SDL_QUIT => break :main_loop,
+                sdl.SDL_KEYDOWN => switch (event.key.keysym.sym) {
+                    sdl.SDLK_UP => scroll_speed_mul += 0.1,
+                    sdl.SDLK_DOWN => scroll_speed_mul -= 0.1,
+                    else => {},
+                },
+                else => {},
+            }
+        }
+        
         // We dont care about "strictness" or "accuracy"
         // we just want something that runs quick lol
-        // @setFloatMode(std.builtin.FloatMode.optimized);
+        @setFloatMode(std.builtin.FloatMode.optimized);
 
         var frame_arena = std.heap.ArenaAllocator.init(main_allocator);
         defer frame_arena.deinit();
@@ -177,7 +191,7 @@ pub fn main() !void {
 
         // current sdl performance tick (with start_tick already subtracted)
         const current_performance_ticks = sdl.SDL_GetPerformanceCounter() - start_tick;
-        const current_time: f80 = (@as(f80, @floatFromInt(current_performance_ticks)) / performance_frequency) * 3;
+        const current_time: f80 = @as(f80, @floatFromInt(current_performance_ticks)) / performance_frequency;
 
         // update game state
         state.process(conductor, current_time);
@@ -195,20 +209,6 @@ pub fn main() !void {
         }
 
         const visual_beat = state.calculateVisualPosition(state.current_beat);
-
-        // handle events
-        var event: sdl.SDL_Event = undefined;
-        while (sdl.SDL_PollEvent(&event) > 0) {
-            switch (event.type) {
-                sdl.SDL_QUIT => break :main_loop,
-                sdl.SDL_KEYDOWN => switch (event.key.keysym.sym) {
-                    sdl.SDLK_UP => scroll_speed_mul += 0.1,
-                    sdl.SDLK_DOWN => scroll_speed_mul -= 0.1,
-                    else => {},
-                },
-                else => {},
-            }
-        }
 
         defer sdl.SDL_RenderPresent(renderer);
         defer last_frame_end = sdl.SDL_GetPerformanceCounter();
