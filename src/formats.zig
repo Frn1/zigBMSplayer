@@ -518,7 +518,12 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
             37...46 => {
                 output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
                 output.notes[output.notes.len - 1].beat = beat;
-                output.notes[output.notes.len - 1].lane = @intCast(object.channel - 37);
+                const lane = object.channel - 37;
+                output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
+                    0...4 => lane + 1,
+                    5 => 0,
+                    else => lane - 1,
+                });
                 output.notes[output.notes.len - 1].type = rhythm.NoteType{
                     .normal = rhythm.NormalNoteType.normal,
                 };
@@ -527,7 +532,12 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
             73...82 => {
                 output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
                 output.notes[output.notes.len - 1].beat = beat;
-                output.notes[output.notes.len - 1].lane = @intCast(object.channel - 73);
+                const lane = object.channel - 73;
+                output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
+                    0...4 => lane + 1,
+                    5 => 0,
+                    else => lane - 1,
+                });
                 output.notes[output.notes.len - 1].lane += 9;
                 output.notes[output.notes.len - 1].type = rhythm.NoteType{
                     .normal = rhythm.NormalNoteType.normal,
@@ -537,7 +547,12 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
             109...118 => {
                 output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
                 output.notes[output.notes.len - 1].beat = beat;
-                output.notes[output.notes.len - 1].lane = @intCast(object.channel - 109);
+                const lane = object.channel - 109;
+                output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
+                    0...4 => lane + 1,
+                    5 => 0,
+                    else => lane - 1,
+                });
                 output.notes[output.notes.len - 1].type = rhythm.NoteType{
                     .normal = rhythm.NormalNoteType.hidden,
                 };
@@ -546,7 +561,12 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
             145...154 => {
                 output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
                 output.notes[output.notes.len - 1].beat = beat;
-                output.notes[output.notes.len - 1].lane = @intCast(object.channel - 145);
+                const lane = object.channel - 145;
+                output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
+                    0...4 => lane + 1,
+                    5 => 0,
+                    else => lane - 1,
+                });
                 output.notes[output.notes.len - 1].lane += 9;
                 output.notes[output.notes.len - 1].type = rhythm.NoteType{
                     .normal = rhythm.NormalNoteType.hidden,
@@ -556,7 +576,12 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
             181...190 => {
                 output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
                 output.notes[output.notes.len - 1].beat = beat;
-                output.notes[output.notes.len - 1].lane = @intCast(object.channel - 181);
+                const lane = object.channel - 181;
+                output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
+                    0...4 => lane + 1,
+                    5 => 0,
+                    else => lane - 1,
+                });
                 var node = active_ln_lanes.first;
                 for (0..active_ln_lanes.len) |_| {
                     if (output.notes[output.notes.len - 1].lane == node.?.data.lane) {
@@ -589,7 +614,12 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
             217...226 => {
                 output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
                 output.notes[output.notes.len - 1].beat = beat;
-                output.notes[output.notes.len - 1].lane = @intCast(object.channel - 217);
+                const lane = object.channel - 217;
+                output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
+                    0...4 => lane + 1,
+                    5 => 0,
+                    else => lane - 1,
+                });
                 output.notes[output.notes.len - 1].lane += 9;
                 var node = active_ln_lanes.first;
                 for (0..active_ln_lanes.len) |_| {

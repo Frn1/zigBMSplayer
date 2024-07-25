@@ -163,7 +163,7 @@ pub fn main() !void {
 
     // Event loop
     main_loop: while (true) {
-        if (sdl.SDL_GetPerformanceCounter() - last_frame_end < sdl.SDL_GetPerformanceFrequency() / 5) {
+        if (sdl.SDL_GetPerformanceCounter() - last_frame_end < sdl.SDL_GetPerformanceFrequency() / c.fps) {
             continue;
         }
 
@@ -180,7 +180,7 @@ pub fn main() !void {
                 else => {},
             }
         }
-        
+
         // We dont care about "strictness" or "accuracy"
         // we just want something that runs quick lol
         @setFloatMode(std.builtin.FloatMode.optimized);
@@ -255,11 +255,7 @@ pub fn main() !void {
             if (object.obj_type == rhythm.Conductor.ObjectType.Note) {
                 const note = conductor.notes[conductor.objects[i].index];
 
-                const lane = switch (note.lane) {
-                    0...4 => note.lane + 1, // First 5 keys for 5k+1
-                    5 => 0, // Scratch
-                    else => note.lane - 1, // the other extra lanes for 7k+1 (i do not know why its like this... but i didnt make BMS so i dont wanna hear it)
-                };
+                const lane = note.lane;
 
                 var render_x = @as(i32, lane);
                 render_x *= c.note_width;
