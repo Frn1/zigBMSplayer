@@ -53,7 +53,7 @@ fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []const u8, direct
 
     const directory_path = try directory.realpathAlloc(arena_allocator, ".");
 
-    const flags = ma.MA_SOUND_FLAG_ASYNC;
+    const flags = ma.MA_SOUND_FLAG_DECODE;
 
     if (directory.access(filename, std.fs.File.OpenFlags{})) {
         const path = try std.fs.path.joinZ(arena_allocator, &[_][]const u8{ directory_path, filename });

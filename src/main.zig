@@ -15,6 +15,7 @@ const rhythm = @import("rhythm.zig");
 const formats = @import("formats.zig");
 const gfx = @import("graphics.zig");
 const utils = @import("utils.zig");
+const audio = @import("audio.zig");
 
 pub fn main() !void {
     // Main allocator we use
@@ -35,6 +36,7 @@ pub fn main() !void {
     try utils.sdlAssert(sdl.TTF_Init() == 0);
     defer sdl.TTF_Quit();
 
+    // init miniaudio
     const ma_engine: *ma.ma_engine = try main_allocator.create(ma.ma_engine);
     defer main_allocator.destroy(ma_engine);
     if (ma.ma_engine_init(null, ma_engine) != ma.MA_SUCCESS) {
@@ -150,8 +152,21 @@ pub fn main() !void {
     // used for fps
     var last_frame_end = sdl.SDL_GetPerformanceCounter();
 
+    var audio_stop_flag = false;
+    const audioThread = try std.Thread.spawn(.{ .allocator = main_allocator }, audio.audioThread, .{
+        &conductor,
+        start_tick,
+        &audio_stop_flag,
+    });
+    defer audioThread.join();
+    defer audio_stop_flag = true;
+
     // Event loop
     main_loop: while (true) {
+        if (sdl.SDL_GetPerformanceCounter() - last_frame_end < (6 * sdl.SDL_GetPerformanceFrequency()) / 1000) {
+            continue;
+        }
+
         // We dont care about "strictness" or "accuracy"
         // we just want something that runs quick lol
         // @setFloatMode(std.builtin.FloatMode.optimized);
@@ -160,45 +175,26 @@ pub fn main() !void {
         defer frame_arena.deinit();
         const frame_allocator = frame_arena.allocator();
 
-        // current sdl performance tick (with start_performance_ticks already subtracted)
+        // current sdl performance tick (with start_tick already subtracted)
         const current_performance_ticks = sdl.SDL_GetPerformanceCounter() - start_tick;
-        const current_time: f80 = @as(f80, @floatFromInt(current_performance_ticks)) / performance_frequency;
+        const current_time: f80 = (@as(f80, @floatFromInt(current_performance_ticks)) / performance_frequency) * 3;
 
         // update game state
-        const last_object_processed_before = state.last_processed_object;
         state.process(conductor, current_time);
-        const last_object_processed_after = state.last_processed_object;
 
-        // if (state.last_processed_object == conductor.objects.len - 1) {
-        //     if (sdl.Mix_Playing(-1) == 0) { // wait until all sounds stop to quit
-        //         break; // Quit the program
-        //     } else {
-        //         for (0..1295) |channel| {
-        //             if (sdl.Mix_Playing(@intCast(channel)) != 0 and sdl.Mix_Volume(@intCast(channel), -1) != 0) {
-        //                 break; // If a sound is still playing (and has volume), break
-        //             }
-        //         } else {
-        //             break :main_loop; // Quit the program
-        //         }
-        //     }
-        // }
-
-        const visual_beat = state.calculateVisualPosition(state.current_beat);
-
-        for (last_object_processed_before..last_object_processed_after) |i| {
-            const object = conductor.objects[i];
-            if (object.obj_type == rhythm.Conductor.ObjectType.Note) {
-                if (conductor.notes[object.index].type == .ln_tail) {
-                    continue; // avoid playing the tail keysounds
+        if (state.last_processed_object == conductor.objects.len - 1) {
+            for (0..1295) |channel| {
+                if (conductor.keysounds[channel] != null) {
+                    if (ma.ma_sound_is_playing(conductor.keysounds[channel]) == ma.MA_TRUE) {
+                        break; // If a sound is still playing, break the inner loop so we dont quit
+                    }
                 }
-                const keysound_id = conductor.notes[object.index].keysound_id - 1;
-                const keysound = conductor.keysounds[keysound_id];
-                if (keysound != null) {
-                    _ = ma.ma_sound_seek_to_pcm_frame(keysound, 0);
-                    _ = ma.ma_sound_start(keysound);
-                }
+            } else {
+                break :main_loop; // Quit the program (the outer loop)
             }
         }
+
+        const visual_beat = state.calculateVisualPosition(state.current_beat);
 
         // handle events
         var event: sdl.SDL_Event = undefined;
