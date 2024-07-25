@@ -8,5 +8,5 @@ CC?=zig cc
 $(shell mkdir -p $(BUILDDIR))
 		
 all:
-	$(CC) $(CXXFLAGS) -include src/stb_vorbis_fix.h -c miniaudio/extras/miniaudio_split/miniaudio.c -o $(BUILDDIR)/miniaudio.o
+	$(CC) $(CXXFLAGS) -fno-sanitize=undefined -include src/stb_vorbis_fix.h -c miniaudio/extras/miniaudio_split/miniaudio.c -o $(BUILDDIR)/miniaudio.o
 	zig build $(ZIGFLAGS)
