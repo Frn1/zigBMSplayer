@@ -21,7 +21,7 @@ fn resetCurrentKeyValue(allocator: std.mem.Allocator, current_key: *[]u8, curren
     current_value.* = try allocator.alloc(u8, 0);
 }
 
-fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []const u8, directory: std.fs.Dir, ma_engine: [*c]ma.ma_engine, output: ?*ma.ma_sound) !void {
+fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []const u8, directory: std.fs.Dir, ma_engine: [*c]ma.ma_engine, output: *?*ma.ma_sound) !void {
     const filename_stem = std.fs.path.stem(filename);
     const filename_dirname = std.fs.path.dirname(filename);
 
@@ -53,12 +53,13 @@ fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []const u8, direct
 
     const directory_path = try directory.realpathAlloc(arena_allocator, ".");
 
-    std.debug.print("{s} {s}\n", .{ directory_path, filename });
+    const flags = ma.MA_SOUND_FLAG_ASYNC;
 
     if (directory.access(filename, std.fs.File.OpenFlags{})) {
         const path = try std.fs.path.joinZ(arena_allocator, &[_][]const u8{ directory_path, filename });
         defer arena_allocator.free(path);
-        if (ma.ma_sound_init_from_file(ma_engine, path, ma.MA_SOUND_FLAG_DECODE, null, null, output) != ma.MA_SUCCESS) {
+        const result = ma.ma_sound_init_from_file(ma_engine, path, flags, null, null, output.*);
+        if (result != ma.MA_SUCCESS) {
             return error.AudioLoadingError;
         }
     } else |err| switch (err) {
@@ -66,7 +67,7 @@ fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []const u8, direct
             if (directory.access(filename_ogg, std.fs.File.OpenFlags{})) {
                 const path = try std.fs.path.joinZ(arena_allocator, &[_][]const u8{ directory_path, filename_ogg });
                 defer arena_allocator.free(path);
-                const result = ma.ma_sound_init_from_file(ma_engine, path, ma.MA_SOUND_FLAG_DECODE, null, null, output);
+                const result = ma.ma_sound_init_from_file(ma_engine, path, flags, null, null, output.*);
                 if (result != ma.MA_SUCCESS) {
                     return error.AudioLoadingError;
                 }
@@ -75,7 +76,8 @@ fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []const u8, direct
                     if (directory.access(filename_wav, std.fs.File.OpenFlags{})) {
                         const path = try std.fs.path.joinZ(arena_allocator, &[_][]const u8{ directory_path, filename_wav });
                         defer arena_allocator.free(path);
-                        if (ma.ma_sound_init_from_file(ma_engine, path, ma.MA_SOUND_FLAG_DECODE, null, null, output) != ma.MA_SUCCESS) {
+                        const result = ma.ma_sound_init_from_file(ma_engine, path, flags, null, null, output.*);
+                        if (result != ma.MA_SUCCESS) {
                             return error.AudioLoadingError;
                         }
                     } else |err3| switch (err3) {
@@ -396,7 +398,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                                     filenameCopy,
                                     open_directory,
                                     ma_engine,
-                                    output.keysounds[index],
+                                    &output.keysounds[index],
                                 ) catch |e| {
                                     utils.showError(
                                         "Couldn't load keysound",

@@ -36,8 +36,6 @@ fn addSDLLibrary(name: []const u8, b: *std.Build, target: std.Build.ResolvedTarg
         install.dependOn(&install_data.step);
     }
 
-    std.debug.print("{s}\n", .{name});
-
     exe.linkSystemLibrary(name);
 }
 
@@ -67,20 +65,9 @@ pub fn build(b: *std.Build) !void {
     try addSDLLibrary("SDL2", b, target, exe);
     try addSDLLibrary("SDL2_ttf", b, target, exe);
 
-    const miniaudio_dependency = b.dependency("miniaudio", .{});
-    
-    exe.addCSourceFile(.{
-        .file = miniaudio_dependency.path("extras/stb_vorbis.c"),
-        .flags = &.{},
-    });
-    exe.addCSourceFile(.{
-        .file = miniaudio_dependency.path("extras/miniaudio_split/miniaudio.c"),
-        .flags = &.{
-            "-fno-sanitize=undefined",
-        },
-    });
-    exe.addSystemIncludePath(miniaudio_dependency.path("extras"));
-    exe.addSystemIncludePath(miniaudio_dependency.path("extras/miniaudio_split"));
+    exe.addSystemIncludePath(.{ .cwd_relative = "miniaudio/extras/miniaudio_split/" });
+
+    exe.addObjectFile(.{ .cwd_relative = ".zig-cache/precompiled/miniaudio.o" });
 
     const install = b.getInstallStep();
     const install_data = b.addInstallDirectory(

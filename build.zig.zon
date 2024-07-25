@@ -13,10 +13,6 @@
             .url = "https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.22.0/SDL2_ttf-devel-2.22.0-mingw.tar.gz",
             .hash = "12200686597ee80c630f310207180a969bc35929dc60c7b4250860c77111c08ed176",
         },
-        .miniaudio = .{
-            .url = "https://github.com/mackron/miniaudio/archive/4a5b74bef029b3592c54b6048650ee5f972c1a48.tar.gz",
-            .hash = "1220daa13e5e160cc3e8d286843749f292dbe31ae7700df3584a7b1ce32da7dcb296",
-        },
     },
     .paths = .{
         // This makes *all* files, recursively, included in this package. It is generally

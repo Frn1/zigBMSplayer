@@ -90,9 +90,13 @@ pub fn main() !void {
         // std.process.exit(1);
     };
     // Make sure to unload the keysounds
-    // defer for (conductor.keysounds) |sound| {
-    //     sdl.Mix_FreeChunk(sound);
-    // };
+    defer for (conductor.keysounds) |sound| {
+        if (sound != null) {
+            ma.ma_sound_uninit(sound);
+            main_allocator.destroy(sound.?);
+        }
+    };
+
     // Make sure to free the chart data
     defer main_allocator.free(conductor.notes);
     defer main_allocator.free(conductor.segments);
@@ -188,10 +192,10 @@ pub fn main() !void {
                     continue; // avoid playing the tail keysounds
                 }
                 const keysound_id = conductor.notes[object.index].keysound_id - 1;
-                const keysound = &conductor.keysounds[keysound_id];
-                if (keysound.* != null) {
-                    _ = ma.ma_sound_seek_to_pcm_frame(@ptrCast(keysound), 0);
-                    _ = ma.ma_sound_start(@ptrCast(keysound));
+                const keysound = conductor.keysounds[keysound_id];
+                if (keysound != null) {
+                    _ = ma.ma_sound_seek_to_pcm_frame(keysound, 0);
+                    _ = ma.ma_sound_start(keysound);
                 }
             }
         }
