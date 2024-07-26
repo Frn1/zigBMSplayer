@@ -58,6 +58,15 @@ pub fn build(b: *std.Build) !void {
         .linkage = .dynamic,
     });
 
+    var make_miniaudio = b.addSystemCommand(&.{
+        "make",
+        "miniaudio",
+        "CC=zig cc",
+        b.fmt("CXXFLAGS=-O{d} -target {s}", .{ 3, try target.result.zigTriple(b.allocator) }),
+    });
+    make_miniaudio.setName("Make miniaudio object");
+    exe.step.dependOn(&(make_miniaudio.step));
+
     if (target.result.isMinGW() == false) {
         exe.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
     }
