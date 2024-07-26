@@ -433,7 +433,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
         .type = rhythm.SegmentType{ .scroll = 1 },
     };
 
-    const ActiveLnLanesType = std.DoublyLinkedList(struct { lane: u4, note_index: usize });
+    const ActiveLnLanesType = std.DoublyLinkedList(struct { lane: u5, note_index: usize });
     var active_ln_lanes = ActiveLnLanesType{};
     var last_processed_measure: u10 = 0;
     var beats_until_now: f80 = 0.0;

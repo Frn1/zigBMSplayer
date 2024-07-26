@@ -36,9 +36,9 @@ pub const NoteType = union(NoteTypeTag) {
 
 pub const Note = struct {
     beat: f80,
-    lane: u4,
-    type: NoteType,
+    lane: u5,
     keysound_id: u11,
+    type: NoteType,
 
     pub fn lessThanFn(ctx: void, lhs: @This(), rhs: @This()) bool {
         _ = ctx;
