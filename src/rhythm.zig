@@ -36,7 +36,7 @@ pub const NoteType = union(NoteTypeTag) {
 
 pub const Note = struct {
     beat: f80,
-    lane: u5,
+    lane: u7,
     keysound_id: u11,
     type: NoteType,
 
@@ -61,6 +61,8 @@ pub const Segment = struct {
 };
 
 pub const Conductor = struct {
+    chart_type: enum { beat7k, beat5k, beat14k, beat10k } = .beat5k,
+
     notes: []Note,
     segments: []Segment,
 

@@ -433,7 +433,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
         .type = rhythm.SegmentType{ .scroll = 1 },
     };
 
-    const ActiveLnLanesType = std.DoublyLinkedList(struct { lane: u5, note_index: usize });
+    const ActiveLnLanesType = std.DoublyLinkedList(struct { lane: u7, note_index: usize });
     var active_ln_lanes = ActiveLnLanesType{};
     var last_processed_measure: u10 = 0;
     var beats_until_now: f80 = 0.0;
@@ -515,7 +515,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                 output.notes[output.notes.len - 1].type = rhythm.NoteType{ .bgm = {} };
                 output.notes[output.notes.len - 1].keysound_id = object.value;
             },
-            37...46 => {
+            37...72 => {
                 output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
                 output.notes[output.notes.len - 1].beat = beat;
                 const lane = object.channel - 37;
@@ -524,12 +524,21 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                     5 => 0,
                     else => lane - 1,
                 });
+                if (lane >= 6 and lane <= 8 and output.chart_type == .beat5k) {
+                    output.chart_type = .beat7k;
+                } else if (lane >= 6 and lane <= 8 and output.chart_type == .beat10k) {
+                    output.chart_type = .beat14k;
+                }
+                if (lane > 8) {
+                    // This is probably pomu, which is unsupported for now
+                    return error.UnsuportedMode;
+                }
                 output.notes[output.notes.len - 1].type = rhythm.NoteType{
                     .normal = rhythm.NormalNoteType.normal,
                 };
                 output.notes[output.notes.len - 1].keysound_id = object.value;
             },
-            73...82 => {
+            73...108 => {
                 output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
                 output.notes[output.notes.len - 1].beat = beat;
                 const lane = object.channel - 73;
@@ -538,13 +547,23 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                     5 => 0,
                     else => lane - 1,
                 });
-                output.notes[output.notes.len - 1].lane += 9;
+                if (output.chart_type == .beat5k) {
+                    output.chart_type = .beat10k;
+                }
+                if (lane >= 6 and lane <= 8 and (output.chart_type == .beat5k or output.chart_type == .beat10k)) {
+                    output.chart_type = .beat14k;
+                }
+                if (lane > 8) {
+                    // This is probably pomu, which is unsupported for now
+                    return error.UnsuportedMode;
+                }
+                output.notes[output.notes.len - 1].lane += 36;
                 output.notes[output.notes.len - 1].type = rhythm.NoteType{
                     .normal = rhythm.NormalNoteType.normal,
                 };
                 output.notes[output.notes.len - 1].keysound_id = object.value;
             },
-            109...118 => {
+            109...144 => {
                 output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
                 output.notes[output.notes.len - 1].beat = beat;
                 const lane = object.channel - 109;
@@ -553,12 +572,21 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                     5 => 0,
                     else => lane - 1,
                 });
+                if (lane >= 6 and lane <= 8 and output.chart_type == .beat5k) {
+                    output.chart_type = .beat7k;
+                } else if (lane >= 6 and lane <= 8 and output.chart_type == .beat10k) {
+                    output.chart_type = .beat14k;
+                }
+                if (lane > 8) {
+                    // This is probably pomu, which is unsupported for now
+                    return error.UnsuportedMode;
+                }
                 output.notes[output.notes.len - 1].type = rhythm.NoteType{
                     .normal = rhythm.NormalNoteType.hidden,
                 };
                 output.notes[output.notes.len - 1].keysound_id = object.value;
             },
-            145...154 => {
+            145...180 => {
                 output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
                 output.notes[output.notes.len - 1].beat = beat;
                 const lane = object.channel - 145;
@@ -567,13 +595,23 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                     5 => 0,
                     else => lane - 1,
                 });
-                output.notes[output.notes.len - 1].lane += 9;
+                if (output.chart_type == .beat5k) {
+                    output.chart_type = .beat10k;
+                }
+                if (lane >= 6 and lane <= 8 and (output.chart_type == .beat5k or output.chart_type == .beat10k)) {
+                    output.chart_type = .beat14k;
+                }
+                if (lane > 8) {
+                    // This is probably pomu, which is unsupported for now
+                    return error.UnsuportedMode;
+                }
+                output.notes[output.notes.len - 1].lane += 36;
                 output.notes[output.notes.len - 1].type = rhythm.NoteType{
                     .normal = rhythm.NormalNoteType.hidden,
                 };
                 output.notes[output.notes.len - 1].keysound_id = object.value;
             },
-            181...190 => {
+            181...216 => {
                 output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
                 output.notes[output.notes.len - 1].beat = beat;
                 const lane = object.channel - 181;
@@ -582,6 +620,15 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                     5 => 0,
                     else => lane - 1,
                 });
+                if (lane >= 6 and lane <= 8 and output.chart_type == .beat5k) {
+                    output.chart_type = .beat7k;
+                } else if (lane >= 6 and lane <= 8 and output.chart_type == .beat10k) {
+                    output.chart_type = .beat14k;
+                }
+                if (lane > 8) {
+                    // This is probably pomu, which is unsupported for now
+                    return error.UnsuportedMode;
+                }
                 var node = active_ln_lanes.first;
                 for (0..active_ln_lanes.len) |_| {
                     if (output.notes[output.notes.len - 1].lane == node.?.data.lane) {
@@ -611,7 +658,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                 };
                 output.notes[output.notes.len - 1].keysound_id = object.value;
             },
-            217...226 => {
+            217...251 => {
                 output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
                 output.notes[output.notes.len - 1].beat = beat;
                 const lane = object.channel - 217;
@@ -620,7 +667,17 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                     5 => 0,
                     else => lane - 1,
                 });
-                output.notes[output.notes.len - 1].lane += 9;
+                if (output.chart_type == .beat5k) {
+                    output.chart_type = .beat10k;
+                }
+                if (lane >= 6 and lane <= 8 and (output.chart_type == .beat5k or output.chart_type == .beat10k)) {
+                    output.chart_type = .beat14k;
+                }
+                if (lane > 8) {
+                    // This is probably pomu, which is unsupported for now
+                    return error.UnsuportedMode;
+                }
+                output.notes[output.notes.len - 1].lane += 36;
                 var node = active_ln_lanes.first;
                 for (0..active_ln_lanes.len) |_| {
                     if (output.notes[output.notes.len - 1].lane == node.?.data.lane) {

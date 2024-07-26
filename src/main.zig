@@ -236,7 +236,20 @@ pub fn main() !void {
                 const segment = conductor.segments[conductor.objects[i].index];
                 switch (segment.type) {
                     .barline => {
-                        try utils.sdlAssert(sdl.SDL_RenderDrawLine(renderer, 0, render_y, c.note_width * 8, render_y) == 0);
+                        try utils.sdlAssert(sdl.SDL_RenderDrawLine(
+                            renderer,
+                            0,
+                            render_y,
+                            gfx.getXForLane(
+                                @as(u7, switch (conductor.chart_type) {
+                                    .beat5k => 5 + 1,
+                                    .beat7k => 7 + 1,
+                                    .beat10k => 10 + 2,
+                                    .beat14k => 14 + 2,
+                                }),
+                            ),
+                            render_y,
+                        ) == 0);
                     },
                     else => {},
                 }
@@ -255,13 +268,18 @@ pub fn main() !void {
             if (object.obj_type == rhythm.Conductor.ObjectType.Note) {
                 const note = conductor.notes[conductor.objects[i].index];
 
-                const lane = note.lane;
+                // TODO: PMS detection and support
+                const lane = switch (note.lane) {
+                    36 => 15,
+                    37...45 => note.lane - 29,
+                    else => note.lane,
+                };
 
-                var render_x = @as(i32, lane);
-                render_x *= c.note_width;
+                const render_x = gfx.getXForLane(lane);
 
-                // change color to red
-                try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
+                // set lane color
+                const color = gfx.getColorForLane(lane);
+                try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a) == 0);
 
                 switch (note.type) {
                     .normal => {
@@ -270,24 +288,21 @@ pub fn main() !void {
                         }
 
                         switch (note.type.normal) {
-                            .normal => {
-                                // change color to red
-                                try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF) == 0);
-                            },
                             .mine => {
                                 // change color to yellow
                                 try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0x00, 0xFF) == 0);
                             },
                             .hidden => {
-                                // change color to blue
-                                try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0xFF, 0xFF) == 0);
+                                // change color to green
+                                try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0xA0, 0x00, 0xFF) == 0);
                             },
+                            else => {},
                         }
 
                         const note_rect: sdl.SDL_Rect = sdl.SDL_Rect{
                             .x = render_x,
                             .y = render_y - c.note_height,
-                            .w = c.note_width,
+                            .w = gfx.getWidthForLane(lane),
                             .h = c.note_height,
                         };
                         try utils.sdlAssert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
@@ -303,7 +318,7 @@ pub fn main() !void {
                         const note_rect: sdl.SDL_Rect = sdl.SDL_Rect{
                             .x = render_x,
                             .y = tail_render_y,
-                            .w = c.note_width,
+                            .w = gfx.getWidthForLane(lane),
                             .h = render_y - tail_render_y,
                         };
                         try utils.sdlAssert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
@@ -315,7 +330,22 @@ pub fn main() !void {
 
         // change color to white
         try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
-        try utils.sdlAssert(sdl.SDL_RenderDrawLine(renderer, 0, c.judgement_line_y, c.note_width * 8, c.judgement_line_y) == 0);
+        try utils.sdlAssert(
+            sdl.SDL_RenderDrawLine(
+                renderer,
+                0,
+                c.judgement_line_y,
+                @intCast(gfx.getXForLane(
+                    @as(u7, switch (conductor.chart_type) {
+                        .beat5k => 5 + 1,
+                        .beat7k => 7 + 1,
+                        .beat10k => 10 + 2,
+                        .beat14k => 14 + 2,
+                    }),
+                )),
+                c.judgement_line_y,
+            ) == 0,
+        );
 
         // draw text used for debuging
         const text: [:0]u8 = try frame_allocator.allocSentinel(u8, 64, 0);

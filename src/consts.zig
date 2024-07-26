@@ -1,10 +1,12 @@
 pub const screen_width = 800;
 pub const screen_height = 600;
 
-pub const note_width = 50;
-pub const note_height = 15;
+pub const note_height = 12;
+pub const note_width_scratch = 75;
+pub const note_width_white = 51;
+pub const note_width_black = 32;
 
-pub const beat_height = 48;
+pub const beat_height = 40;
 
 pub const judgement_line_y = 500;
 
