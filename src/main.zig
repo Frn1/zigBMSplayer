@@ -113,11 +113,11 @@ pub fn main() !void {
     defer conductor.deleteObjects(main_allocator);
 
     // Calculate time we hit every object
-    const times = try conductor.calculateObjectTimesInSeconds(main_allocator);
-    defer main_allocator.free(times);
+    const object_times = try conductor.calculateObjectTimesInSeconds(main_allocator);
+    defer main_allocator.free(object_times);
     // Calculate position we hit every object
-    const positions = try conductor.calculateVisualBeats(main_allocator);
-    defer main_allocator.free(positions);
+    const object_positions = try conductor.calculateVisualBeats(main_allocator);
+    defer main_allocator.free(object_positions);
 
     // SDL window
     const window: *sdl.SDL_Window = sdl.SDL_CreateWindow(
@@ -155,6 +155,7 @@ pub fn main() !void {
     var audio_stop_flag = false;
     const audioThread = try std.Thread.spawn(.{ .allocator = main_allocator }, audio.audioThread, .{
         &conductor,
+        object_times,
         start_tick,
         &audio_stop_flag,
     });
@@ -196,7 +197,7 @@ pub fn main() !void {
         // update game state
         state.process(conductor, current_time);
 
-        if (state.last_processed_object == conductor.objects.len - 1) {
+        if (state.next_object_to_process == conductor.objects.len - 1) {
             for (0..1295) |channel| {
                 if (conductor.keysounds[channel] != null) {
                     if (ma.ma_sound_is_playing(conductor.keysounds[channel]) == ma.MA_TRUE) {
@@ -217,7 +218,7 @@ pub fn main() !void {
         try utils.sdlAssert(sdl.SDL_RenderClear(renderer) == 0);
 
         // Draw barlines BEFORE notes so they appear behind the notes
-        for (conductor.objects, positions, 0..) |object, position, i| {
+        for (conductor.objects, object_positions, 0..) |object, position, i| {
             var render_y = @as(i32, @intFromFloat((visual_beat - position.visual_beat) * scroll_speed_mul * c.beat_height));
             render_y += c.judgement_line_y;
 
@@ -257,7 +258,7 @@ pub fn main() !void {
         }
 
         // And NOW we draw the notes
-        for (conductor.objects, positions, 0..) |object, position, i| {
+        for (conductor.objects, object_positions, 0..) |object, position, i| {
             var render_y = @as(i32, @intFromFloat((visual_beat - position.visual_beat) * scroll_speed_mul * c.beat_height));
             render_y += c.judgement_line_y;
 
@@ -309,7 +310,7 @@ pub fn main() !void {
                     },
                     .ln_head => {
                         var tail_render_y = @as(i32, @intFromFloat(
-                            (visual_beat - positions[position.ln_tail_obj_index.?].visual_beat) * scroll_speed_mul * c.beat_height,
+                            (visual_beat - object_positions[position.ln_tail_obj_index.?].visual_beat) * scroll_speed_mul * c.beat_height,
                         ));
                         tail_render_y += c.judgement_line_y;
                         if (tail_render_y > c.screen_height) {

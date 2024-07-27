@@ -178,10 +178,10 @@ pub const Conductor = struct {
 
 pub const ConductorState = struct {
     /// Last processed object index
-    last_processed_object: usize = 0,
+    next_object_to_process: usize = 0,
 
     /// Current seconds per beat (basically BPM)
-    current_sec_per_beat: f80 = std.math.nan(f80),
+    current_sec_per_beat: f80 = std.math.inf(f80),
     /// seconds to subtruct from the time
     sec_offset: f80 = 0,
     /// beats to add when calculating current_beat
@@ -210,7 +210,7 @@ pub const ConductorState = struct {
     // Calculate the second from a time in beats approximately
     // (It can only guarantee accuracy until the next segment)
     pub inline fn calculateSecondsFromBeatApprox(self: @This(), time_beats: f80) f80 {
-        if (std.math.isInf(self.current_sec_per_beat) or std.math.isNan(self.current_sec_per_beat)) {
+        if (self.current_sec_per_beat < 0 or !std.math.isNormal(self.current_sec_per_beat)) {
             return self.sec_offset;
         }
         const time_secs = (time_beats - self.beat_offset) * self.current_sec_per_beat + self.sec_offset;
@@ -223,7 +223,7 @@ pub const ConductorState = struct {
     // Calculate the beat from a time in seconds approximately
     // (It can only guarantee accuracy until the next segment)
     pub inline fn calculateBeatFromSecondsApprox(self: @This(), time_secs: f80) f80 {
-        if (std.math.isInf(self.current_sec_per_beat) or std.math.isNan(self.current_sec_per_beat)) {
+        if (self.current_sec_per_beat < 0 or !std.math.isNormal(self.current_sec_per_beat)) {
             return self.beat_offset;
         }
         if (time_secs < self.sec_offset) {
@@ -236,17 +236,17 @@ pub const ConductorState = struct {
     /// Process events and update the conductor
     pub fn process(self: *@This(), conductor: Conductor, current_sec: f80) void {
         self.updateCurrentbeat(current_sec);
-        for (conductor.objects[self.last_processed_object..], self.last_processed_object..) |object, i| {
-            if (object.obj_beat > self.current_beat) {
-                self.last_processed_object = i;
+        for (conductor.objects[self.next_object_to_process..], self.next_object_to_process..) |object, i| {
+            if (self.current_beat < object.obj_beat) {
                 break;
             }
+            defer self.next_object_to_process = i + 1;
             if (object.obj_type == Conductor.ObjectType.Segment) {
                 const segment = conductor.segments[object.index];
                 switch (segment.type) {
                     SegmentTypeTag.bpm => |new_bpm| {
-                        if (std.math.isNan(self.current_sec_per_beat)) {
-                            self.sec_offset = self.calculateSecondsFromBeatApprox(segment.beat);
+                        if (self.current_sec_per_beat < 0 or !std.math.isNormal(self.current_sec_per_beat)) {
+                            self.sec_offset = 0;
                             self.beat_offset = 0;
                             self.current_sec_per_beat = @floatCast(60.0 / new_bpm);
                         } else {
@@ -260,7 +260,6 @@ pub const ConductorState = struct {
                         self.visual_pos_offset = self.calculateVisualPosition(segment.beat);
                         self.visual_beats_offset = segment.beat;
                         self.current_scroll_mul = @floatCast(new_scroll);
-                        // self.visual_beats_offset
                     },
                     SegmentTypeTag.stop => |stopped_beats| {
                         self.sec_offset = self.calculateSecondsFromBeatApprox(
@@ -274,8 +273,6 @@ pub const ConductorState = struct {
                 }
                 self.updateCurrentbeat(current_sec);
             }
-            self.last_processed_object = i;
         }
-        self.updateCurrentbeat(current_sec);
     }
 };
