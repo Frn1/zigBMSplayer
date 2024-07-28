@@ -108,6 +108,7 @@ pub fn main() !void {
     sdl.SDL_RenderPresent(renderer);
 
     var scroll_speed_mul: Object.Position = 2.0;
+    const scroll_direction: gfx.ScrollDirection = .Down;
 
     var loading_arena = std.heap.ArenaAllocator.init(main_allocator);
     // Allocator used when loading stuff that wont stay after loading
@@ -157,6 +158,9 @@ pub fn main() !void {
         // std.log.err("ERROR: Couldn't load BMS File ({!})", .{e});
         // std.process.exit(1);
     };
+
+    defer conductor.destroyObjects(main_allocator);
+
     // Make sure to unload the keysounds
     // defer for (conductor.keysounds) |sound| {
     //     if (sound != null) {
@@ -281,7 +285,7 @@ pub fn main() !void {
         for (conductor.objects, object_positions, 0..) |object, object_position, i| {
             _ = i;
             if (object.render != null) {
-                try object.render.?(object, visual_position, object_position, scroll_speed_mul, false, renderer);
+                try object.render.?(object, visual_position, object_position, scroll_speed_mul, scroll_direction, renderer);
             }
         }
 
@@ -399,11 +403,16 @@ pub fn main() !void {
 
         // change color to white
         try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
+
+        const judgement_line_y = switch (scroll_direction) {
+            .Up => c.upscroll_judgement_line_y,
+            .Down => c.downscroll_judgement_line_y,
+        };
         try utils.sdlAssert(
             sdl.SDL_RenderDrawLine(
                 renderer,
                 0,
-                c.judgement_line_y,
+                judgement_line_y,
                 @intCast(gfx.getXForLane(
                     @as(u7, switch (conductor.chart_type) {
                         .beat5k => 5 + 1,
@@ -412,7 +421,7 @@ pub fn main() !void {
                         .beat14k => 14 + 2,
                     }),
                 )),
-                c.judgement_line_y,
+                judgement_line_y,
             ) == 0,
         );
 

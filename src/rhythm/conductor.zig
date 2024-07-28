@@ -15,6 +15,15 @@ pub const Conductor = struct {
         );
     }
 
+    pub fn destroyObjects(self: *Conductor, allocator: std.mem.Allocator) void {
+        for (self.objects) |object| {
+            if (object.destroy != null) {
+                object.destroy.?(object, allocator);
+            }
+        }
+        allocator.free(self.objects);
+    }
+
     /// Calculate seconds and positions for each object in this conductor
     ///
     /// The arguments (except for self) are optional.

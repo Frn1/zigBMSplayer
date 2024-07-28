@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const ScrollDirection = @import("../graphics.zig").ScrollDirection;
+
 const State = @import("conductor.zig").Conductor.State;
 
 const Renderer = @cImport({
@@ -39,7 +41,7 @@ pub const Object = struct {
     /// Called when exiting
     ///
     /// **MUST BE MULTI-THREADING SAFE**
-    destroy: ?*const fn (self: *@This(), allocator: std.mem.Allocator) void = null,
+    destroy: ?*const fn (self: @This(), allocator: std.mem.Allocator) void = null,
 
     /// Called when processing/loading/running gameplay.
     /// Will run at the "perfect" time for the object.
@@ -73,7 +75,7 @@ pub const Object = struct {
         object_position: Object.Position,
         current_position: Object.Position,
         scroll_speed: Object.Position,
-        scroll_direction: enum { Up, Down },
+        scroll_direction: ScrollDirection,
         renderer: *Renderer,
     ) error{SdlError}!void = null,
 
