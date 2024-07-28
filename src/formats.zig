@@ -1,6 +1,5 @@
 const std = @import("std");
 
-const rhythm = @import("rhythm.zig");
 const gfx = @import("graphics.zig");
 const utils = @import("utils.zig");
 
@@ -12,6 +11,10 @@ const ma = @cImport({
     @cDefine("MINIAUDIO_IMPLEMENTATION", {});
     @cInclude("miniaudio.h");
 });
+
+const Conductor = @import("rhythm/conductor.zig").Conductor;
+const Object = @import("rhythm/object.zig").Object;
+const BPMObject = @import("rhythm/objects/bpm.zig");
 
 fn resetCurrentKeyValue(allocator: std.mem.Allocator, current_key: *[]u8, current_value: *[]u8) !void {
     allocator.free(current_key.*);
@@ -94,15 +97,15 @@ fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []const u8, direct
     }
 }
 
-pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, directory: []const u8, data: [:0]const u8) !rhythm.Conductor {
+pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, directory: []const u8, data: [:0]const u8) !Conductor {
+    _ = ma_engine;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
     var arena_allocator = arena.allocator();
 
-    var output = rhythm.Conductor{
-        .notes = try allocator.alloc(rhythm.Note, 0),
-        .segments = try allocator.alloc(rhythm.Segment, 0),
+    var output = Conductor{
+        .objects = try allocator.alloc(Object, 1),
     };
 
     const Steps = enum { SkipUntilHashtag, ParseKey, ParseValue };
@@ -186,6 +189,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
     const directory_realpath = try std.fs.cwd().realpathAlloc(allocator, directory);
     defer allocator.free(directory_realpath);
     const open_directory = try std.fs.openDirAbsolute(directory_realpath, std.fs.Dir.OpenDirOptions{});
+    _ = open_directory;
     // var keysoundThreads: [1295]?std.Thread = .{null} ** 1295;
 
     var initial_bpm: f64 = 0.0;
@@ -379,36 +383,37 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                                 try scroll_values.put(key, new_scroll);
                             } else if (std.mem.startsWith(u8, current_key, "WAV")) {
                                 const index = try std.fmt.parseInt(u11, current_key[3..5], 36) - 1;
+                                _ = index;
 
                                 const filenameCopy = try arena_allocator.alloc(u8, current_value.len);
                                 defer arena_allocator.free(filenameCopy);
                                 @memcpy(filenameCopy, current_value);
 
-                                if (output.keysounds[index] != null) {
-                                    // if there is a sound already loaded in that place, unload it so we dont cause a memory leak
-                                    allocator.destroy(output.keysounds[index].?);
-                                    ma.ma_sound_uninit(output.keysounds[index].?);
-                                    output.keysounds[index] = null;
-                                }
+                                // if (output.keysounds[index] != null) {
+                                //     // if there is a sound already loaded in that place, unload it so we dont cause a memory leak
+                                //     allocator.destroy(output.keysounds[index].?);
+                                //     ma.ma_sound_uninit(output.keysounds[index].?);
+                                //     output.keysounds[index] = null;
+                                // }
 
-                                output.keysounds[index] = try allocator.create(ma.ma_sound);
+                                // output.keysounds[index] = try allocator.create(ma.ma_sound);
 
-                                loadKeysound(
-                                    arena_allocator,
-                                    filenameCopy,
-                                    open_directory,
-                                    ma_engine,
-                                    &output.keysounds[index],
-                                ) catch |e| {
-                                    utils.showError(
-                                        "Couldn't load keysound",
-                                        try std.fmt.allocPrintZ(
-                                            arena_allocator,
-                                            "Keysound with id {d} at path {s} failed to load\n{!}",
-                                            .{ index, filenameCopy, e },
-                                        ),
-                                    );
-                                };
+                                // loadKeysound(
+                                //     arena_allocator,
+                                //     filenameCopy,
+                                //     open_directory,
+                                //     ma_engine,
+                                //     &output.keysounds[index],
+                                // ) catch |e| {
+                                //     utils.showError(
+                                //         "Couldn't load keysound",
+                                //         try std.fmt.allocPrintZ(
+                                //             arena_allocator,
+                                //             "Keysound with id {d} at path {s} failed to load\n{!}",
+                                //             .{ index, filenameCopy, e },
+                                //         ),
+                                //     );
+                                // };
                             }
                         }
                     }
@@ -423,18 +428,10 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
     std.sort.heap(BmsObject, bms_objects, {}, BmsObject.lessThanFn);
 
     // Add initial bpm change
-    output.segments = try allocator.realloc(output.segments, output.segments.len + 2);
-    output.segments[output.segments.len - 2] = rhythm.Segment{
-        .beat = 0,
-        .type = rhythm.SegmentType{ .bpm = initial_bpm },
-    };
-    output.segments[output.segments.len - 1] = rhythm.Segment{
-        .beat = 0,
-        .type = rhythm.SegmentType{ .scroll = 1 },
-    };
+    output.objects[0] = try BPMObject.createBpmObject(allocator, 0, initial_bpm);
 
-    const ActiveLnLanesType = std.DoublyLinkedList(struct { lane: u7, note_index: usize });
-    var active_ln_lanes = ActiveLnLanesType{};
+    // const ActiveLnLanesType = std.DoublyLinkedList(struct { lane: u7, note_index: usize });
+    // var active_ln_lanes = ActiveLnLanesType{};
     var last_processed_measure: u10 = 0;
     var beats_until_now: f80 = 0.0;
     var beats_in_measure: f80 = 4.0;
@@ -449,11 +446,11 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                     beats_in_measure = 4.0 * @as(f80, @floatCast(beats_in_measure_multiplier.?));
                 }
                 beats_until_now += beats_in_measure;
-                output.segments = try allocator.realloc(output.segments, output.segments.len + 1);
-                output.segments[output.segments.len - 1] = rhythm.Segment{
-                    .beat = beats_until_now,
-                    .type = rhythm.SegmentType{ .barline = {} },
-                };
+                // output.segments = try allocator.realloc(output.segments, output.segments.len + 1);
+                // output.segments[output.segments.len - 1] = rhythm.Segment{
+                //     .beat = beats_until_now,
+                //     .type = rhythm.SegmentType{ .barline = {} },
+                // };
                 last_processed_measure = measure;
             }
             const beats_in_measure_multiplier: ?f64 = time_signatures.get(@intCast(object.measure));
@@ -469,250 +466,249 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
 
         switch (object.channel) {
             3 => {
-                output.segments = try allocator.realloc(output.segments, output.segments.len + 1);
-                output.segments[output.segments.len - 1] = rhythm.Segment{
-                    .beat = beat,
-                    .type = rhythm.SegmentType{
-                        .bpm = @floatFromInt(object.value),
-                    },
-                };
+                output.objects = try allocator.realloc(output.objects, output.objects.len + 1);
+                output.objects[output.objects.len - 1] = try BPMObject.createBpmObject(
+                    allocator,
+                    beat,
+                    @floatFromInt(object.value),
+                );
             },
             8 => {
-                output.segments = try allocator.realloc(output.segments, output.segments.len + 1);
-                output.segments[output.segments.len - 1] = rhythm.Segment{
-                    .beat = beat,
-                    .type = rhythm.SegmentType{
-                        .bpm = bpm_values.get(object.value).?,
-                    },
-                };
-            },
-            9 => {
-                const duration_beats = 4 * @as(f80, @floatFromInt(stop_values.get(object.value).?)) / 192.0;
-                // std.debug.print("{} {any}\n", .{ object.value, duration_beats });
-
-                output.segments = try allocator.realloc(output.segments, output.segments.len + 1);
-                output.segments[output.segments.len - 1] = rhythm.Segment{
-                    .beat = beat,
-                    .type = rhythm.SegmentType{
-                        .stop = duration_beats,
-                    },
-                };
-            },
-            1020 => { // Channel SC
-                const new_scroll = scroll_values.get(object.value).?;
-                output.segments = try allocator.realloc(output.segments, output.segments.len + 1);
-                output.segments[output.segments.len - 1] = rhythm.Segment{
-                    .beat = beat,
-                    .type = rhythm.SegmentType{
-                        .scroll = new_scroll,
-                    },
-                };
-            },
-            1 => {
-                output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
-                output.notes[output.notes.len - 1].beat = beat;
-                output.notes[output.notes.len - 1].lane = 0;
-                output.notes[output.notes.len - 1].type = rhythm.NoteType{ .bgm = {} };
-                output.notes[output.notes.len - 1].keysound_id = object.value;
-            },
-            37...72 => {
-                output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
-                output.notes[output.notes.len - 1].beat = beat;
-                const lane = object.channel - 37;
-                output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
-                    0...4 => lane + 1,
-                    5 => 0,
-                    else => lane - 1,
-                });
-                if (lane >= 6 and lane <= 8 and output.chart_type == .beat5k) {
-                    output.chart_type = .beat7k;
-                } else if (lane >= 6 and lane <= 8 and output.chart_type == .beat10k) {
-                    output.chart_type = .beat14k;
-                }
-                if (lane > 8) {
-                    // This is probably pomu, which is unsupported for now
-                    return error.UnsuportedMode;
-                }
-                output.notes[output.notes.len - 1].type = rhythm.NoteType{
-                    .normal = rhythm.NormalNoteType.normal,
-                };
-                output.notes[output.notes.len - 1].keysound_id = object.value;
-            },
-            73...108 => {
-                output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
-                output.notes[output.notes.len - 1].beat = beat;
-                const lane = object.channel - 73;
-                output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
-                    0...4 => lane + 1,
-                    5 => 0,
-                    else => lane - 1,
-                });
-                if (output.chart_type == .beat5k) {
-                    output.chart_type = .beat10k;
-                }
-                if (lane >= 6 and lane <= 8 and (output.chart_type == .beat5k or output.chart_type == .beat10k)) {
-                    output.chart_type = .beat14k;
-                }
-                if (lane > 8) {
-                    // This is probably pomu, which is unsupported for now
-                    return error.UnsuportedMode;
-                }
-                output.notes[output.notes.len - 1].lane += 36;
-                output.notes[output.notes.len - 1].type = rhythm.NoteType{
-                    .normal = rhythm.NormalNoteType.normal,
-                };
-                output.notes[output.notes.len - 1].keysound_id = object.value;
-            },
-            109...144 => {
-                output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
-                output.notes[output.notes.len - 1].beat = beat;
-                const lane = object.channel - 109;
-                output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
-                    0...4 => lane + 1,
-                    5 => 0,
-                    else => lane - 1,
-                });
-                if (lane >= 6 and lane <= 8 and output.chart_type == .beat5k) {
-                    output.chart_type = .beat7k;
-                } else if (lane >= 6 and lane <= 8 and output.chart_type == .beat10k) {
-                    output.chart_type = .beat14k;
-                }
-                if (lane > 8) {
-                    // This is probably pomu, which is unsupported for now
-                    return error.UnsuportedMode;
-                }
-                output.notes[output.notes.len - 1].type = rhythm.NoteType{
-                    .normal = rhythm.NormalNoteType.hidden,
-                };
-                output.notes[output.notes.len - 1].keysound_id = object.value;
-            },
-            145...180 => {
-                output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
-                output.notes[output.notes.len - 1].beat = beat;
-                const lane = object.channel - 145;
-                output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
-                    0...4 => lane + 1,
-                    5 => 0,
-                    else => lane - 1,
-                });
-                if (output.chart_type == .beat5k) {
-                    output.chart_type = .beat10k;
-                }
-                if (lane >= 6 and lane <= 8 and (output.chart_type == .beat5k or output.chart_type == .beat10k)) {
-                    output.chart_type = .beat14k;
-                }
-                if (lane > 8) {
-                    // This is probably pomu, which is unsupported for now
-                    return error.UnsuportedMode;
-                }
-                output.notes[output.notes.len - 1].lane += 36;
-                output.notes[output.notes.len - 1].type = rhythm.NoteType{
-                    .normal = rhythm.NormalNoteType.hidden,
-                };
-                output.notes[output.notes.len - 1].keysound_id = object.value;
-            },
-            181...216 => {
-                output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
-                output.notes[output.notes.len - 1].beat = beat;
-                const lane = object.channel - 181;
-                output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
-                    0...4 => lane + 1,
-                    5 => 0,
-                    else => lane - 1,
-                });
-                if (lane >= 6 and lane <= 8 and output.chart_type == .beat5k) {
-                    output.chart_type = .beat7k;
-                } else if (lane >= 6 and lane <= 8 and output.chart_type == .beat10k) {
-                    output.chart_type = .beat14k;
-                }
-                if (lane > 8) {
-                    // This is probably pomu, which is unsupported for now
-                    return error.UnsuportedMode;
-                }
-                var node = active_ln_lanes.first;
-                for (0..active_ln_lanes.len) |_| {
-                    if (output.notes[output.notes.len - 1].lane == node.?.data.lane) {
-                        if (output.notes[node.?.data.note_index].keysound_id == object.value) {
-                            output.notes[node.?.data.note_index].type = rhythm.NoteType{
-                                .ln_head = output.notes.len - 1,
-                            };
-                            active_ln_lanes.remove(node.?);
-                            break;
-                        }
-                    }
-                    node = node.?.next;
-                } else {
-                    output.notes[output.notes.len - 1].type = rhythm.NoteType{
-                        .ln_head = 0,
-                    };
-                    const new_node = try arena_allocator.create(ActiveLnLanesType.Node);
-                    new_node.prev = active_ln_lanes.last;
-                    new_node.data = .{
-                        .lane = output.notes[output.notes.len - 1].lane,
-                        .note_index = output.notes.len - 1,
-                    };
-                    active_ln_lanes.append(new_node);
-                }
-                output.notes[output.notes.len - 1].type = rhythm.NoteType{
-                    .ln_tail = rhythm.LongNoteType.normal,
-                };
-                output.notes[output.notes.len - 1].keysound_id = object.value;
-            },
-            217...251 => {
-                output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
-                output.notes[output.notes.len - 1].beat = beat;
-                const lane = object.channel - 217;
-                output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
-                    0...4 => lane + 1,
-                    5 => 0,
-                    else => lane - 1,
-                });
-                if (output.chart_type == .beat5k) {
-                    output.chart_type = .beat10k;
-                }
-                if (lane >= 6 and lane <= 8 and (output.chart_type == .beat5k or output.chart_type == .beat10k)) {
-                    output.chart_type = .beat14k;
-                }
-                if (lane > 8) {
-                    // This is probably pomu, which is unsupported for now
-                    return error.UnsuportedMode;
-                }
-                output.notes[output.notes.len - 1].lane += 36;
-                var node = active_ln_lanes.first;
-                for (0..active_ln_lanes.len) |_| {
-                    if (output.notes[output.notes.len - 1].lane == node.?.data.lane) {
-                        if (output.notes[node.?.data.note_index].keysound_id == object.value) {
-                            output.notes[node.?.data.note_index].type = rhythm.NoteType{
-                                .ln_head = output.notes.len - 1,
-                            };
-                            active_ln_lanes.remove(node.?);
-                            break;
-                        }
-                    }
-                    node = node.?.next;
-                } else {
-                    output.notes[output.notes.len - 1].type = rhythm.NoteType{
-                        .ln_head = 0,
-                    };
-                    const new_node = try allocator.create(ActiveLnLanesType.Node);
-                    new_node.prev = active_ln_lanes.last;
-                    new_node.data = .{
-                        .lane = output.notes[output.notes.len - 1].lane,
-                        .note_index = output.notes.len - 1,
-                    };
-                    active_ln_lanes.append(new_node);
-                }
-                output.notes[output.notes.len - 1].type = rhythm.NoteType{
-                    .ln_tail = rhythm.LongNoteType.normal,
-                };
-                output.notes[output.notes.len - 1].keysound_id = object.value;
+                output.objects = try allocator.realloc(output.objects, output.objects.len + 1);
+                output.objects[output.objects.len - 1] = try BPMObject.createBpmObject(
+                    allocator,
+                    beat,
+                    bpm_values.get(object.value).?,
+                );
             },
             else => {},
+            //     9 => {
+            //         const duration_beats = 4 * @as(f80, @floatFromInt(stop_values.get(object.value).?)) / 192.0;
+            //         // std.debug.print("{} {any}\n", .{ object.value, duration_beats });
+
+            //         output.segments = try allocator.realloc(output.segments, output.segments.len + 1);
+            //         output.segments[output.segments.len - 1] = rhythm.Segment{
+            //             .beat = beat,
+            //             .type = rhythm.SegmentType{
+            //                 .stop = duration_beats,
+            //             },
+            //         };
+            //     },
+            //     1020 => { // Channel SC
+            //         const new_scroll = scroll_values.get(object.value).?;
+            //         output.segments = try allocator.realloc(output.segments, output.segments.len + 1);
+            //         output.segments[output.segments.len - 1] = rhythm.Segment{
+            //             .beat = beat,
+            //             .type = rhythm.SegmentType{
+            //                 .scroll = new_scroll,
+            //             },
+            //         };
+            //     },
+            //     1 => {
+            //         output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
+            //         output.notes[output.notes.len - 1].beat = beat;
+            //         output.notes[output.notes.len - 1].lane = 0;
+            //         output.notes[output.notes.len - 1].type = rhythm.NoteType{ .bgm = {} };
+            //         output.notes[output.notes.len - 1].keysound_id = object.value;
+            //     },
+            //     37...72 => {
+            //         output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
+            //         output.notes[output.notes.len - 1].beat = beat;
+            //         const lane = object.channel - 37;
+            //         output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
+            //             0...4 => lane + 1,
+            //             5 => 0,
+            //             else => lane - 1,
+            //         });
+            //         if (lane >= 6 and lane <= 8 and output.chart_type == .beat5k) {
+            //             output.chart_type = .beat7k;
+            //         } else if (lane >= 6 and lane <= 8 and output.chart_type == .beat10k) {
+            //             output.chart_type = .beat14k;
+            //         }
+            //         if (lane > 8) {
+            //             // This is probably pomu, which is unsupported for now
+            //             return error.UnsuportedMode;
+            //         }
+            //         output.notes[output.notes.len - 1].type = rhythm.NoteType{
+            //             .normal = rhythm.NormalNoteType.normal,
+            //         };
+            //         output.notes[output.notes.len - 1].keysound_id = object.value;
+            //     },
+            //     73...108 => {
+            //         output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
+            //         output.notes[output.notes.len - 1].beat = beat;
+            //         const lane = object.channel - 73;
+            //         output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
+            //             0...4 => lane + 1,
+            //             5 => 0,
+            //             else => lane - 1,
+            //         });
+            //         if (output.chart_type == .beat5k) {
+            //             output.chart_type = .beat10k;
+            //         }
+            //         if (lane >= 6 and lane <= 8 and (output.chart_type == .beat5k or output.chart_type == .beat10k)) {
+            //             output.chart_type = .beat14k;
+            //         }
+            //         if (lane > 8) {
+            //             // This is probably pomu, which is unsupported for now
+            //             return error.UnsuportedMode;
+            //         }
+            //         output.notes[output.notes.len - 1].lane += 36;
+            //         output.notes[output.notes.len - 1].type = rhythm.NoteType{
+            //             .normal = rhythm.NormalNoteType.normal,
+            //         };
+            //         output.notes[output.notes.len - 1].keysound_id = object.value;
+            //     },
+            //     109...144 => {
+            //         output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
+            //         output.notes[output.notes.len - 1].beat = beat;
+            //         const lane = object.channel - 109;
+            //         output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
+            //             0...4 => lane + 1,
+            //             5 => 0,
+            //             else => lane - 1,
+            //         });
+            //         if (lane >= 6 and lane <= 8 and output.chart_type == .beat5k) {
+            //             output.chart_type = .beat7k;
+            //         } else if (lane >= 6 and lane <= 8 and output.chart_type == .beat10k) {
+            //             output.chart_type = .beat14k;
+            //         }
+            //         if (lane > 8) {
+            //             // This is probably pomu, which is unsupported for now
+            //             return error.UnsuportedMode;
+            //         }
+            //         output.notes[output.notes.len - 1].type = rhythm.NoteType{
+            //             .normal = rhythm.NormalNoteType.hidden,
+            //         };
+            //         output.notes[output.notes.len - 1].keysound_id = object.value;
+            //     },
+            //     145...180 => {
+            //         output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
+            //         output.notes[output.notes.len - 1].beat = beat;
+            //         const lane = object.channel - 145;
+            //         output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
+            //             0...4 => lane + 1,
+            //             5 => 0,
+            //             else => lane - 1,
+            //         });
+            //         if (output.chart_type == .beat5k) {
+            //             output.chart_type = .beat10k;
+            //         }
+            //         if (lane >= 6 and lane <= 8 and (output.chart_type == .beat5k or output.chart_type == .beat10k)) {
+            //             output.chart_type = .beat14k;
+            //         }
+            //         if (lane > 8) {
+            //             // This is probably pomu, which is unsupported for now
+            //             return error.UnsuportedMode;
+            //         }
+            //         output.notes[output.notes.len - 1].lane += 36;
+            //         output.notes[output.notes.len - 1].type = rhythm.NoteType{
+            //             .normal = rhythm.NormalNoteType.hidden,
+            //         };
+            //         output.notes[output.notes.len - 1].keysound_id = object.value;
+            //     },
+            //     181...216 => {
+            //         output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
+            //         output.notes[output.notes.len - 1].beat = beat;
+            //         const lane = object.channel - 181;
+            //         output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
+            //             0...4 => lane + 1,
+            //             5 => 0,
+            //             else => lane - 1,
+            //         });
+            //         if (lane >= 6 and lane <= 8 and output.chart_type == .beat5k) {
+            //             output.chart_type = .beat7k;
+            //         } else if (lane >= 6 and lane <= 8 and output.chart_type == .beat10k) {
+            //             output.chart_type = .beat14k;
+            //         }
+            //         if (lane > 8) {
+            //             // This is probably pomu, which is unsupported for now
+            //             return error.UnsuportedMode;
+            //         }
+            //         var node = active_ln_lanes.first;
+            //         for (0..active_ln_lanes.len) |_| {
+            //             if (output.notes[output.notes.len - 1].lane == node.?.data.lane) {
+            //                 if (output.notes[node.?.data.note_index].keysound_id == object.value) {
+            //                     output.notes[node.?.data.note_index].type = rhythm.NoteType{
+            //                         .ln_head = output.notes.len - 1,
+            //                     };
+            //                     active_ln_lanes.remove(node.?);
+            //                     break;
+            //                 }
+            //             }
+            //             node = node.?.next;
+            //         } else {
+            //             output.notes[output.notes.len - 1].type = rhythm.NoteType{
+            //                 .ln_head = 0,
+            //             };
+            //             const new_node = try arena_allocator.create(ActiveLnLanesType.Node);
+            //             new_node.prev = active_ln_lanes.last;
+            //             new_node.data = .{
+            //                 .lane = output.notes[output.notes.len - 1].lane,
+            //                 .note_index = output.notes.len - 1,
+            //             };
+            //             active_ln_lanes.append(new_node);
+            //         }
+            //         output.notes[output.notes.len - 1].type = rhythm.NoteType{
+            //             .ln_tail = rhythm.LongNoteType.normal,
+            //         };
+            //         output.notes[output.notes.len - 1].keysound_id = object.value;
+            //     },
+            //     217...251 => {
+            //         output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
+            //         output.notes[output.notes.len - 1].beat = beat;
+            //         const lane = object.channel - 217;
+            //         output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
+            //             0...4 => lane + 1,
+            //             5 => 0,
+            //             else => lane - 1,
+            //         });
+            //         if (output.chart_type == .beat5k) {
+            //             output.chart_type = .beat10k;
+            //         }
+            //         if (lane >= 6 and lane <= 8 and (output.chart_type == .beat5k or output.chart_type == .beat10k)) {
+            //             output.chart_type = .beat14k;
+            //         }
+            //         if (lane > 8) {
+            //             // This is probably pomu, which is unsupported for now
+            //             return error.UnsuportedMode;
+            //         }
+            //         output.notes[output.notes.len - 1].lane += 36;
+            //         var node = active_ln_lanes.first;
+            //         for (0..active_ln_lanes.len) |_| {
+            //             if (output.notes[output.notes.len - 1].lane == node.?.data.lane) {
+            //                 if (output.notes[node.?.data.note_index].keysound_id == object.value) {
+            //                     output.notes[node.?.data.note_index].type = rhythm.NoteType{
+            //                         .ln_head = output.notes.len - 1,
+            //                     };
+            //                     active_ln_lanes.remove(node.?);
+            //                     break;
+            //                 }
+            //             }
+            //             node = node.?.next;
+            //         } else {
+            //             output.notes[output.notes.len - 1].type = rhythm.NoteType{
+            //                 .ln_head = 0,
+            //             };
+            //             const new_node = try allocator.create(ActiveLnLanesType.Node);
+            //             new_node.prev = active_ln_lanes.last;
+            //             new_node.data = .{
+            //                 .lane = output.notes[output.notes.len - 1].lane,
+            //                 .note_index = output.notes.len - 1,
+            //             };
+            //             active_ln_lanes.append(new_node);
+            //         }
+            //         output.notes[output.notes.len - 1].type = rhythm.NoteType{
+            //             .ln_tail = rhythm.LongNoteType.normal,
+            //         };
+            //         output.notes[output.notes.len - 1].keysound_id = object.value;
+            //     },
+            //     else => {},
         }
     }
 
-    output.sortNotes();
-    output.sortSegments();
+    // output.sortNotes();
+    // output.sortSegments();
 
     // for (keysoundThreads) |thread| {
     //     if (thread == null) continue;

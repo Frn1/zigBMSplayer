@@ -8,6 +8,7 @@ pub const note_width_black = 32;
 
 pub const beat_height = 40;
 
-pub const judgement_line_y = 500;
+pub const upscroll_judgement_line_y = 100;
+pub const downscroll_judgement_line_y = 500;
 
 pub const fps = 120;

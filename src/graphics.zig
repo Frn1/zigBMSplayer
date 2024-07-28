@@ -1,12 +1,14 @@
 const std = @import("std");
 
+const c = @import("consts.zig");
+const utils = @import("utils.zig");
+
+const Object = @import("rhythm/object.zig").Object;
+
 const sdl = @cImport({
     @cInclude("SDL2/SDL.h");
     @cInclude("SDL2/SDL_ttf.h");
 });
-
-const c = @import("consts.zig");
-const utils = @import("utils.zig");
 
 pub fn drawText(text: [:0]u8, renderer: *sdl.SDL_Renderer, x: c_int, y: c_int, font: *sdl.TTF_Font) !void {
     const surface_text: *sdl.SDL_Surface = sdl.TTF_RenderText_Solid(font, text, .{ .r = 255, .g = 255, .b = 255 }).?;
@@ -54,6 +56,14 @@ pub fn getWidthForLane(lane: u7) c_int {
         .white => c.note_width_white,
         .black => c.note_width_black,
     };
+}
+
+pub fn getYFromPosition(
+    object_position: Object.Position,
+    current_position: Object.Position,
+    scroll_speed: Object.Position,
+) c_int {
+    return @as(c_int, @intFromFloat(@round((current_position - object_position) * scroll_speed * c.beat_height)));
 }
 
 pub fn getXForLane(lane: u7) c_int {
