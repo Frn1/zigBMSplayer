@@ -28,8 +28,6 @@ pub const Object = struct {
     /// and do other work before starting the game.
     ///
     /// Called when loading
-    ///
-    /// **MUST BE MULTI-THREADING SAFE**
     init: ?*const fn (self: *@This(), allocator: std.mem.Allocator) error{
         OutOfMemory,
         InvalidParameters,
@@ -39,8 +37,6 @@ pub const Object = struct {
     /// and everything created in init
     ///
     /// Called when exiting
-    ///
-    /// **MUST BE MULTI-THREADING SAFE**
     destroy: ?*const fn (self: @This(), allocator: std.mem.Allocator) void = null,
 
     /// Called when processing/loading/running gameplay.
