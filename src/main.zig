@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const sdl = @cImport({
     @cInclude("SDL2/SDL.h");
@@ -19,13 +20,20 @@ const audio = @import("audio.zig");
 
 pub fn main() !void {
     // Main allocator we use
+    // We use GeneralPurposeAllocator in debug, C Allocator in release
+    var main_allocator: std.mem.Allocator = undefined;
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const main_allocator = gpa.allocator();
-    defer {
+    if (comptime builtin.mode == .Debug) {
+        main_allocator = gpa.allocator();
+    } else {
+        gpa = undefined;
+        main_allocator = std.heap.c_allocator;
+    }
+    defer if (comptime builtin.mode == .Debug) {
         const deinit_status = gpa.deinit();
         //fail test; can't try in defer as defer is executed after we return
         if (deinit_status == .leak) @panic("Memory leak :(");
-    }
+    };
 
     // init sdl
     try utils.sdlAssert(
@@ -43,6 +51,11 @@ pub fn main() !void {
         utils.showError("Miniaudio error!\u{0000}", "Couldn't initialize miniaudio\u{0000}");
         return error.MiniaudioError; // Failed to initialize the engine.
     }
+    if (ma.ma_engine_start(ma_engine) != ma.MA_SUCCESS) {
+        utils.showError("Miniaudio error!\u{0000}", "Couldn't start audio device\u{0000}");
+        return error.MiniaudioError; // Failed to initialize the engine.
+    }
+    defer ma.ma_engine_uninit(ma_engine);
 
     var scroll_speed_mul: f80 = 2.0;
 
