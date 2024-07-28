@@ -2,9 +2,17 @@ const std = @import("std");
 
 const Object = @import("object.zig").Object;
 
+const ma_sound = @cImport({
+    @cDefine("MINIAUDIO_IMPLEMENTATION", {});
+    @cInclude("miniaudio.h");
+}).ma_sound;
+
+pub const ChartType = enum { beat7k, beat5k, beat14k, beat10k };
+
 pub const Conductor = struct {
-    chart_type: enum { beat7k, beat5k, beat14k, beat10k } = .beat5k,
+    chart_type: ChartType = .beat5k,
     objects: []Object,
+    keysounds: [1295]?*ma_sound = .{null} ** 1295,
 
     pub fn sortObjects(self: Conductor) void {
         std.sort.heap(
@@ -17,9 +25,7 @@ pub const Conductor = struct {
 
     pub fn destroyObjects(self: *Conductor, allocator: std.mem.Allocator) void {
         for (self.objects) |object| {
-            if (object.destroy != null) {
-                object.destroy.?(object, allocator);
-            }
+            object.destroy(object, allocator);
         }
         allocator.free(self.objects);
     }
@@ -141,13 +147,13 @@ pub const Conductor = struct {
         /// The current beat.
         /// It should **always** go higher or stop and **NEVER** go back in time.
         /// (Unless the state is reset)
-        current_beat: Object.Time = 0,
+        beat: Object.Time = 0,
 
         /// Recalculates the current beat.
         ///
         /// **(It can only guarantee accuracy from the last object until the next object)**
-        pub inline fn updateCurrentbeat(self: *@This(), current_sec: Object.Time) void {
-            self.current_beat = self.convertSecondsToBeats(current_sec);
+        inline fn updateBeat(self: *@This(), current_sec: Object.Time) void {
+            self.beat = self.convertSecondsToBeats(current_sec);
         }
 
         /// Calculate the visual position at `beat`.
@@ -192,22 +198,18 @@ pub const Conductor = struct {
         }
 
         /// Process objects and update
-        pub fn update(self: *@This(), conductor: Conductor, current_sec: Object.Time, in_gameplay: bool) void {
-            self.updateCurrentbeat(current_sec);
+        pub fn update(self: *@This(), conductor: Conductor, current_seconds: Object.Time, is_audio_thread: bool) void {
+            self.updateBeat(current_seconds);
             for (conductor.objects[self.next_object_to_process..], self.next_object_to_process..) |object, i| {
-                if (self.current_beat < object.beat) {
+                if (self.beat < object.beat) {
                     break;
                 }
                 self.next_object_to_process = i + 1;
-                if (object.process != null) {
-                    object.process.?(object, self);
+                object.process(object, self);
+                if (is_audio_thread) {
+                    object.processAudio(object);
                 }
-                if (in_gameplay) {
-                    if (object.processGameplay != null) {
-                        object.processGameplay.?(object);
-                    }
-                }
-                self.updateCurrentbeat(current_sec);
+                self.updateBeat(current_seconds);
             }
         }
     };

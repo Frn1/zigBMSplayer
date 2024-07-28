@@ -8,6 +8,7 @@ const utils = @import("utils.zig");
 const audio = @import("audio.zig");
 
 const Conductor = @import("rhythm/conductor.zig").Conductor;
+const ChartType = @import("rhythm/conductor.zig").ChartType;
 const Object = @import("rhythm/object.zig").Object;
 
 const sdl = @cImport({
@@ -19,6 +20,25 @@ const ma = @cImport({
     @cDefine("MINIAUDIO_IMPLEMENTATION", {});
     @cInclude("miniaudio.h");
 });
+
+pub fn drawJudgementLine(renderer: *sdl.SDL_Renderer, chart_type: ChartType, scroll_direction: gfx.ScrollDirection) !void {
+    // change color to white
+    try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
+
+    const judgement_line_y: c_int = switch (scroll_direction) {
+        .Up => c.upscroll_judgement_line_y,
+        .Down => c.downscroll_judgement_line_y,
+    };
+    try utils.sdlAssert(
+        sdl.SDL_RenderDrawLine(
+            renderer,
+            0,
+            judgement_line_y,
+            gfx.getBarlineWidth(chart_type),
+            judgement_line_y,
+        ) == 0,
+    );
+}
 
 pub fn main() !void {
     // --- Initialization ---
@@ -159,19 +179,15 @@ pub fn main() !void {
         // std.process.exit(1);
     };
 
-    defer conductor.destroyObjects(main_allocator);
-
     // Make sure to unload the keysounds
-    // defer for (conductor.keysounds) |sound| {
-    //     if (sound != null) {
-    //         ma.ma_sound_uninit(sound);
-    //         main_allocator.destroy(sound.?);
-    //     }
-    // };
-
-    // Make sure to free the chart data
-    // defer main_allocator.free(conductor.notes);
-    // defer main_allocator.free(conductor.segments);
+    defer for (conductor.keysounds) |sound| {
+        if (sound != null) {
+            ma.ma_sound_uninit(sound);
+            main_allocator.destroy(sound.?);
+        }
+    };
+    // ...and destroy the objects too
+    defer conductor.destroyObjects(main_allocator);
 
     try gfx.drawText("BMS file read - Compiling now... Done!", renderer, 0, 24 * 4, debug_font);
     sdl.SDL_RenderPresent(renderer);
@@ -180,13 +196,6 @@ pub fn main() !void {
     // YEAH I KNOW I should be doing this with defer
     // the next line after creating the arena but shut
     loading_arena.deinit();
-
-    // Create objects for the conductor
-    // try conductor.createObjects(main_allocator);
-    // defer conductor.deleteObjects(main_allocator);
-
-    try gfx.drawText("Objects created", renderer, 0, 24 * 5, debug_font);
-    sdl.SDL_RenderPresent(renderer);
 
     // Calculate time we hit every object
     const object_times = try conductor.calculateSecondsAlloc(main_allocator);
@@ -211,8 +220,7 @@ pub fn main() !void {
 
     var audio_stop_flag = false;
     const audioThread = try std.Thread.spawn(.{ .allocator = main_allocator }, audio.audioThread, .{
-        &conductor,
-        object_times,
+        conductor,
         start_tick,
         &audio_stop_flag,
     });
@@ -229,9 +237,9 @@ pub fn main() !void {
 
     // Event loop
     main_loop: while (true) {
-        if (sdl.SDL_GetPerformanceCounter() - last_frame_end < sdl.SDL_GetPerformanceFrequency() / c.fps) {
-            continue;
-        }
+        // if (sdl.SDL_GetPerformanceCounter() - last_frame_end < sdl.SDL_GetPerformanceFrequency() / c.fps) {
+        //     continue;
+        // }
 
         // handle events
         var event: sdl.SDL_Event = undefined;
@@ -260,21 +268,21 @@ pub fn main() !void {
         const current_time: f80 = @as(f80, @floatFromInt(current_performance_ticks)) / performance_frequency;
 
         // update game state
-        state.update(conductor, current_time, true);
+        state.update(conductor, current_time, false);
 
-        // if (state.next_object_to_process == conductor.objects.len - 1) {
-        //     for (0..1295) |channel| {
-        //         if (conductor.keysounds[channel] != null) {
-        //             if (ma.ma_sound_is_playing(conductor.keysounds[channel]) == ma.MA_TRUE) {
-        //                 break; // If a sound is still playing, break the inner loop so we dont quit
-        //             }
-        //         }
-        //     } else {
-        //         break :main_loop; // Quit the program (the outer loop)
-        //     }
-        // }
+        if (state.next_object_to_process == conductor.objects.len) {
+            for (0..1295) |channel| {
+                if (conductor.keysounds[channel] != null) {
+                    if (ma.ma_sound_is_playing(conductor.keysounds[channel]) == ma.MA_TRUE) {
+                        break; // If a sound is still playing, break the inner loop so we dont quit
+                    }
+                }
+            } else {
+                break :main_loop; // Quit the program (the outer loop)
+            }
+        }
 
-        const visual_position = state.calculateVisualPosition(state.current_beat);
+        const position = state.calculateVisualPosition(state.beat);
 
         defer last_frame_end = sdl.SDL_GetPerformanceCounter();
         defer sdl.SDL_RenderPresent(renderer);
@@ -282,11 +290,19 @@ pub fn main() !void {
         try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF) == 0);
         try utils.sdlAssert(sdl.SDL_RenderClear(renderer) == 0);
 
+        try drawJudgementLine(renderer, conductor.chart_type, scroll_direction);
+
         for (conductor.objects, object_positions, 0..) |object, object_position, i| {
             _ = i;
-            if (object.render != null) {
-                try object.render.?(object, visual_position, object_position, scroll_speed_mul, scroll_direction, renderer);
-            }
+            try object.render(
+                object,
+                position,
+                object_position,
+                conductor.chart_type,
+                scroll_speed_mul,
+                scroll_direction,
+                renderer,
+            );
         }
 
         // // Draw barlines BEFORE notes so they appear behind the notes
@@ -401,42 +417,18 @@ pub fn main() !void {
         //     }
         // }
 
-        // change color to white
-        try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
-
-        const judgement_line_y = switch (scroll_direction) {
-            .Up => c.upscroll_judgement_line_y,
-            .Down => c.downscroll_judgement_line_y,
-        };
-        try utils.sdlAssert(
-            sdl.SDL_RenderDrawLine(
-                renderer,
-                0,
-                judgement_line_y,
-                @intCast(gfx.getXForLane(
-                    @as(u7, switch (conductor.chart_type) {
-                        .beat5k => 5 + 1,
-                        .beat7k => 7 + 1,
-                        .beat10k => 10 + 2,
-                        .beat14k => 14 + 2,
-                    }),
-                )),
-                judgement_line_y,
-            ) == 0,
-        );
-
         // draw text used for debuging
         const text: [:0]u8 = try frame_allocator.allocSentinel(u8, 64, 0);
 
         _ = try std.fmt.bufPrint(text, "B   {d:.3}   {d:.3}\u{0000}", .{
-            state.current_beat,
+            state.beat,
             60.0 / state.seconds_per_beat,
         });
 
         try gfx.drawText(text, renderer, 0, 24 * 0, debug_font);
 
-        // _ = try std.fmt.bufPrint(text, "VB  {d:.3}  x{d:.3}\u{0000}", .{ visual_beat, state.current_scroll_mul });
-        // try gfx.drawText(text, renderer, 0, 24 * 1, debug_font);
+        _ = try std.fmt.bufPrint(text, "P  {d:.3}  x{d:.3}\u{0000}", .{ position, state.scroll_mul });
+        try gfx.drawText(text, renderer, 0, 24 * 1, debug_font);
 
         _ = try std.fmt.bufPrint(text, "FPS {d:.3}\u{0000}", .{
             performance_frequency / @as(

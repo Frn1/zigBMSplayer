@@ -2,9 +2,9 @@ pub const screen_width = 800;
 pub const screen_height = 600;
 
 pub const note_height = 12;
-pub const note_width_scratch = 75;
+pub const note_width_scratch = 88;
 pub const note_width_white = 51;
-pub const note_width_black = 32;
+pub const note_width_black = 36;
 
 pub const beat_height = 40;
 

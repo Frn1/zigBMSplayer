@@ -15,6 +15,16 @@ const ma = @cImport({
 const Conductor = @import("rhythm/conductor.zig").Conductor;
 const Object = @import("rhythm/object.zig").Object;
 const BPMObject = @import("rhythm/objects/bpm.zig");
+const BGMObject = @import("rhythm/objects/bgm.zig");
+const NoteObject = @import("rhythm/objects/note.zig");
+const BarlineObject = @import("rhythm/objects/barline.zig");
+const Lane = @import("rhythm/objects/note.zig").Lane;
+
+const BMSMeasure = u10;
+const BMSChannel = u11;
+const BMSValue = u11;
+const RandomNumber = u32;
+const KeysoundId = BMSValue;
 
 fn resetCurrentKeyValue(allocator: std.mem.Allocator, current_key: *[]u8, current_value: *[]u8) !void {
     allocator.free(current_key.*);
@@ -22,6 +32,47 @@ fn resetCurrentKeyValue(allocator: std.mem.Allocator, current_key: *[]u8, curren
 
     current_key.* = try allocator.alloc(u8, 0);
     current_value.* = try allocator.alloc(u8, 0);
+}
+
+fn addBGM(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time, keysound_id: KeysoundId) !void {
+    conductor.objects = try allocator.realloc(conductor.objects, conductor.objects.len + 1);
+    conductor.objects[conductor.objects.len - 1] = try BGMObject.create(
+        allocator,
+        beat,
+        conductor.keysounds[keysound_id],
+    );
+}
+
+fn channelToLane(channel: BMSChannel) !NoteObject.Lane {
+    return switch (channel) {
+        37 => Lane.White1_P1,
+        38 => Lane.Black1_P1,
+        39 => Lane.White2_P1,
+        40 => Lane.Black2_P1,
+        41 => Lane.White3_P1,
+        42 => Lane.Scratch_P1,
+        44 => Lane.Black3_P1,
+        45 => Lane.White4_P1,
+        73 => Lane.White1_P2,
+        74 => Lane.Black1_P2,
+        75 => Lane.White2_P2,
+        76 => Lane.Black2_P2,
+        77 => Lane.White3_P2,
+        78 => Lane.Scratch_P2,
+        80 => Lane.Black3_P2,
+        81 => Lane.White4_P2,
+        else => return error.UnknownGameMode, // The channel isnt in here, so it's probably something else
+    };
+}
+
+fn addNote(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time, channel: BMSChannel, keysound_id: KeysoundId) !void {
+    conductor.objects = try allocator.realloc(conductor.objects, conductor.objects.len + 1);
+    conductor.objects[conductor.objects.len - 1] = try NoteObject.create(
+        allocator,
+        beat,
+        try channelToLane(channel),
+        conductor.keysounds[keysound_id],
+    );
 }
 
 fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []const u8, directory: std.fs.Dir, ma_engine: [*c]ma.ma_engine, output: *?*ma.ma_sound) !void {
@@ -98,7 +149,6 @@ fn loadKeysound(arena_allocator: std.mem.Allocator, filename: []const u8, direct
 }
 
 pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, directory: []const u8, data: [:0]const u8) !Conductor {
-    _ = ma_engine;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
@@ -117,23 +167,23 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
     var current_value = try arena_allocator.alloc(u8, 0);
     defer arena_allocator.free(current_value);
 
-    var time_signatures = std.HashMap(u10, f64, struct {
-        pub fn hash(self: @This(), key: u10) u64 {
+    var time_signatures = std.HashMap(BMSMeasure, f64, struct {
+        pub fn hash(self: @This(), key: BMSMeasure) u64 {
             _ = self;
             return @intCast(key);
         }
 
-        pub fn eql(self: @This(), a: u10, b: u10) bool {
+        pub fn eql(self: @This(), a: BMSMeasure, b: BMSMeasure) bool {
             _ = self;
             return a == b;
         }
     }, 80).init(arena_allocator);
 
     const BmsObject = struct {
-        measure: u10,
+        measure: BMSMeasure,
         fraction: f64,
-        channel: u11,
-        value: u11,
+        channel: BMSChannel,
+        value: BMSValue,
 
         pub fn lessThanFn(ctx: void, lhs: @This(), rhs: @This()) bool {
             _ = ctx;
@@ -150,7 +200,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
     defer arena_allocator.free(bms_objects);
 
     const RandomValue = struct {
-        value: u32,
+        number: RandomNumber,
         skipping: bool = true,
         is_switch: bool = false,
         already_matched: bool = false,
@@ -162,25 +212,13 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
         arena_allocator.destroy(random_stack.pop().?);
     };
 
-    const BmsFloatDictionary = std.HashMap(u11, f64, struct {
-        pub fn hash(self: @This(), key: u11) u64 {
+    const VauleTimeHashMap = std.HashMap(BMSValue, Object.Time, struct {
+        pub fn hash(self: @This(), key: BMSValue) u64 {
             _ = self;
             return @intCast(key);
         }
 
-        pub fn eql(self: @This(), a: u11, b: u11) bool {
-            _ = self;
-            return a == b;
-        }
-    }, 80);
-
-    const BmsIntDictionary = std.HashMap(u11, u32, struct {
-        pub fn hash(self: @This(), key: u11) u64 {
-            _ = self;
-            return @intCast(key);
-        }
-
-        pub fn eql(self: @This(), a: u11, b: u11) bool {
+        pub fn eql(self: @This(), a: BMSValue, b: BMSValue) bool {
             _ = self;
             return a == b;
         }
@@ -189,13 +227,12 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
     const directory_realpath = try std.fs.cwd().realpathAlloc(allocator, directory);
     defer allocator.free(directory_realpath);
     const open_directory = try std.fs.openDirAbsolute(directory_realpath, std.fs.Dir.OpenDirOptions{});
-    _ = open_directory;
     // var keysoundThreads: [1295]?std.Thread = .{null} ** 1295;
 
-    var initial_bpm: f64 = 0.0;
-    var bpm_values = BmsFloatDictionary.init(arena_allocator);
-    var stop_values = BmsIntDictionary.init(arena_allocator);
-    var scroll_values = BmsFloatDictionary.init(arena_allocator);
+    var initial_bpm: Object.Time = 0.0;
+    var bpm_values = VauleTimeHashMap.init(arena_allocator);
+    var stop_values = VauleTimeHashMap.init(arena_allocator);
+    var scroll_values = VauleTimeHashMap.init(arena_allocator);
 
     var parsing_channel = false;
 
@@ -278,8 +315,8 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                             continue;
                         }
 
-                        const measure = try std.fmt.parseInt(u10, current_key[0..3], 10);
-                        const channel = try std.fmt.parseInt(u11, current_key[3..5], 36);
+                        const measure = try std.fmt.parseInt(BMSMeasure, current_key[0..3], 10);
+                        const channel = try std.fmt.parseInt(BMSChannel, current_key[3..5], 36);
 
                         switch (channel) {
                             2 => {
@@ -289,7 +326,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                                 const divisions = current_value.len / 2;
                                 for (0..divisions) |i| {
                                     const number_base: u8 = if (channel == 3) 16 else 36;
-                                    const value = try std.fmt.parseInt(u11, current_value[i * 2 .. i * 2 + 2], number_base);
+                                    const value = try std.fmt.parseInt(BMSValue, current_value[i * 2 .. i * 2 + 2], number_base);
                                     if (value == 0) {
                                         continue;
                                     }
@@ -323,10 +360,10 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                                     RandomStack.Node{
                                     .prev = random_stack.last,
                                     .data = RandomValue{
-                                        .value = std.Random.uintLessThan(
+                                        .number = std.Random.uintLessThan(
                                             std.crypto.random,
-                                            u32,
-                                            try std.fmt.parseInt(u32, current_value, 10),
+                                            RandomNumber,
+                                            try std.fmt.parseInt(RandomNumber, current_value, 10),
                                         ) + 1,
                                         .is_switch = true,
                                     },
@@ -338,10 +375,10 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                                     RandomStack.Node{
                                     .prev = random_stack.last,
                                     .data = RandomValue{
-                                        .value = std.Random.uintLessThan(
+                                        .number = std.Random.uintLessThan(
                                             std.crypto.random,
-                                            u32,
-                                            try std.fmt.parseInt(u32, current_value, 10),
+                                            RandomNumber,
+                                            try std.fmt.parseInt(RandomNumber, current_value, 10),
                                         ) + 1,
                                     },
                                 };
@@ -350,15 +387,15 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                                 const top_random_stack = random_stack.first.?;
                                 if (top_random_stack.data.is_switch) {
                                     if (is_case and top_random_stack.data.skipping and !top_random_stack.data.already_matched) {
-                                        const value_to_match = try std.fmt.parseInt(u32, current_value, 10);
-                                        if (top_random_stack.*.data.value == value_to_match) {
+                                        const value_to_match = try std.fmt.parseInt(RandomNumber, current_value, 10);
+                                        if (top_random_stack.*.data.number == value_to_match) {
                                             top_random_stack.*.data.skipping = false;
                                             top_random_stack.*.data.already_matched = true;
                                         }
                                     }
                                 } else if (is_if) {
-                                    const value_to_match = try std.fmt.parseInt(u32, current_value, 10);
-                                    if (top_random_stack.data.value == value_to_match and top_random_stack.data.already_matched == false) {
+                                    const value_to_match = try std.fmt.parseInt(RandomNumber, current_value, 10);
+                                    if (top_random_stack.data.number == value_to_match and top_random_stack.data.already_matched == false) {
                                         top_random_stack.*.data.skipping = false;
                                         top_random_stack.*.data.already_matched = true;
                                     } else {
@@ -370,50 +407,54 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                             if (std.mem.eql(u8, current_key, "BPM")) {
                                 initial_bpm = try std.fmt.parseFloat(f64, current_value);
                             } else if (std.mem.startsWith(u8, current_key, "BPM")) {
-                                const key = try std.fmt.parseInt(u11, current_key[3..5], 36);
+                                const key = try std.fmt.parseInt(BMSValue, current_key[3..5], 36);
                                 const bpm = try std.fmt.parseFloat(f64, current_value);
                                 try bpm_values.put(key, bpm);
                             } else if (std.mem.startsWith(u8, current_key, "STOP")) {
-                                const key = try std.fmt.parseInt(u11, current_key[4..6], 36);
-                                const stopped_time = try std.fmt.parseInt(u32, current_value, 10); // 1 unit corresponds 1/192 of measure with 4/4 meter
+                                const key = try std.fmt.parseInt(BMSValue, current_key[4..6], 36);
+                                const stopped_time: Object.Time = 4 * @as(
+                                    Object.Time,
+                                    @floatFromInt(
+                                        try std.fmt.parseInt(RandomNumber, current_value, 10),
+                                    ),
+                                ) / 192.0; // 1 unit corresponds 1/192 of measure with 4/4 meter
                                 try stop_values.put(key, stopped_time);
                             } else if (std.mem.startsWith(u8, current_key, "SCROLL")) {
-                                const key = try std.fmt.parseInt(u11, current_key[6..8], 36);
+                                const key = try std.fmt.parseInt(BMSValue, current_key[6..8], 36);
                                 const new_scroll = try std.fmt.parseFloat(f64, current_value);
                                 try scroll_values.put(key, new_scroll);
                             } else if (std.mem.startsWith(u8, current_key, "WAV")) {
-                                const index = try std.fmt.parseInt(u11, current_key[3..5], 36) - 1;
-                                _ = index;
+                                const index = try std.fmt.parseInt(BMSValue, current_key[3..5], 36) - 1;
 
                                 const filenameCopy = try arena_allocator.alloc(u8, current_value.len);
                                 defer arena_allocator.free(filenameCopy);
                                 @memcpy(filenameCopy, current_value);
 
-                                // if (output.keysounds[index] != null) {
-                                //     // if there is a sound already loaded in that place, unload it so we dont cause a memory leak
-                                //     allocator.destroy(output.keysounds[index].?);
-                                //     ma.ma_sound_uninit(output.keysounds[index].?);
-                                //     output.keysounds[index] = null;
-                                // }
+                                if (output.keysounds[index] != null) {
+                                    // if there is a sound already loaded in that place, unload it so we dont cause a memory leak
+                                    allocator.destroy(output.keysounds[index].?);
+                                    ma.ma_sound_uninit(output.keysounds[index].?);
+                                    output.keysounds[index] = null;
+                                }
 
-                                // output.keysounds[index] = try allocator.create(ma.ma_sound);
+                                output.keysounds[index] = try allocator.create(ma.ma_sound);
 
-                                // loadKeysound(
-                                //     arena_allocator,
-                                //     filenameCopy,
-                                //     open_directory,
-                                //     ma_engine,
-                                //     &output.keysounds[index],
-                                // ) catch |e| {
-                                //     utils.showError(
-                                //         "Couldn't load keysound",
-                                //         try std.fmt.allocPrintZ(
-                                //             arena_allocator,
-                                //             "Keysound with id {d} at path {s} failed to load\n{!}",
-                                //             .{ index, filenameCopy, e },
-                                //         ),
-                                //     );
-                                // };
+                                loadKeysound(
+                                    arena_allocator,
+                                    filenameCopy,
+                                    open_directory,
+                                    ma_engine,
+                                    &output.keysounds[index],
+                                ) catch |e| {
+                                    utils.showError(
+                                        "Couldn't load keysound",
+                                        try std.fmt.allocPrintZ(
+                                            arena_allocator,
+                                            "Keysound with id {d} at path {s} failed to load\n{!}",
+                                            .{ index, filenameCopy, e },
+                                        ),
+                                    );
+                                };
                             }
                         }
                     }
@@ -428,17 +469,29 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
     std.sort.heap(BmsObject, bms_objects, {}, BmsObject.lessThanFn);
 
     // Add initial bpm change
-    output.objects[0] = try BPMObject.createBpmObject(allocator, 0, initial_bpm);
+    output.objects[0] = try BPMObject.create(allocator, 0, initial_bpm);
 
     // const ActiveLnLanesType = std.DoublyLinkedList(struct { lane: u7, note_index: usize });
     // var active_ln_lanes = ActiveLnLanesType{};
-    var last_processed_measure: u10 = 0;
+    var last_processed_measure: BMSMeasure = 0;
     var beats_until_now: f80 = 0.0;
     var beats_in_measure: f80 = 4.0;
+    var is_doubles = false;
+    var uses_7_lanes = false;
     for (bms_objects) |object| {
+        if ((object.channel > 43 and object.channel < 46) or
+            (object.channel > 79 and object.channel < 82))
+        {
+            uses_7_lanes = true;
+        }
+
+        if (object.channel > 72 and object.channel < 108) {
+            is_doubles = true;
+        }
+
         if (last_processed_measure != object.measure) {
             for (last_processed_measure..object.measure) |measure_usize| {
-                const measure: u10 = @intCast(measure_usize);
+                const measure: BMSMeasure = @intCast(measure_usize);
                 const beats_in_measure_multiplier: ?f64 = time_signatures.get(@intCast(measure));
                 if (beats_in_measure_multiplier == null) {
                     beats_in_measure = 4.0;
@@ -446,11 +499,11 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                     beats_in_measure = 4.0 * @as(f80, @floatCast(beats_in_measure_multiplier.?));
                 }
                 beats_until_now += beats_in_measure;
-                // output.segments = try allocator.realloc(output.segments, output.segments.len + 1);
-                // output.segments[output.segments.len - 1] = rhythm.Segment{
-                //     .beat = beats_until_now,
-                //     .type = rhythm.SegmentType{ .barline = {} },
-                // };
+                output.objects = try allocator.realloc(output.objects, output.objects.len + 1);
+                output.objects[output.objects.len - 1] = try BarlineObject.create(
+                    allocator,
+                    beats_until_now,
+                );
                 last_processed_measure = measure;
             }
             const beats_in_measure_multiplier: ?f64 = time_signatures.get(@intCast(object.measure));
@@ -467,7 +520,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
         switch (object.channel) {
             3 => {
                 output.objects = try allocator.realloc(output.objects, output.objects.len + 1);
-                output.objects[output.objects.len - 1] = try BPMObject.createBpmObject(
+                output.objects[output.objects.len - 1] = try BPMObject.create(
                     allocator,
                     beat,
                     @floatFromInt(object.value),
@@ -475,13 +528,12 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
             },
             8 => {
                 output.objects = try allocator.realloc(output.objects, output.objects.len + 1);
-                output.objects[output.objects.len - 1] = try BPMObject.createBpmObject(
+                output.objects[output.objects.len - 1] = try BPMObject.create(
                     allocator,
                     beat,
                     bpm_values.get(object.value).?,
                 );
             },
-            else => {},
             //     9 => {
             //         const duration_beats = 4 * @as(f80, @floatFromInt(stop_values.get(object.value).?)) / 192.0;
             //         // std.debug.print("{} {any}\n", .{ object.value, duration_beats });
@@ -504,61 +556,23 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
             //             },
             //         };
             //     },
-            //     1 => {
-            //         output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
-            //         output.notes[output.notes.len - 1].beat = beat;
-            //         output.notes[output.notes.len - 1].lane = 0;
-            //         output.notes[output.notes.len - 1].type = rhythm.NoteType{ .bgm = {} };
-            //         output.notes[output.notes.len - 1].keysound_id = object.value;
-            //     },
-            //     37...72 => {
-            //         output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
-            //         output.notes[output.notes.len - 1].beat = beat;
-            //         const lane = object.channel - 37;
-            //         output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
-            //             0...4 => lane + 1,
-            //             5 => 0,
-            //             else => lane - 1,
-            //         });
-            //         if (lane >= 6 and lane <= 8 and output.chart_type == .beat5k) {
-            //             output.chart_type = .beat7k;
-            //         } else if (lane >= 6 and lane <= 8 and output.chart_type == .beat10k) {
-            //             output.chart_type = .beat14k;
-            //         }
-            //         if (lane > 8) {
-            //             // This is probably pomu, which is unsupported for now
-            //             return error.UnsuportedMode;
-            //         }
-            //         output.notes[output.notes.len - 1].type = rhythm.NoteType{
-            //             .normal = rhythm.NormalNoteType.normal,
-            //         };
-            //         output.notes[output.notes.len - 1].keysound_id = object.value;
-            //     },
-            //     73...108 => {
-            //         output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
-            //         output.notes[output.notes.len - 1].beat = beat;
-            //         const lane = object.channel - 73;
-            //         output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
-            //             0...4 => lane + 1,
-            //             5 => 0,
-            //             else => lane - 1,
-            //         });
-            //         if (output.chart_type == .beat5k) {
-            //             output.chart_type = .beat10k;
-            //         }
-            //         if (lane >= 6 and lane <= 8 and (output.chart_type == .beat5k or output.chart_type == .beat10k)) {
-            //             output.chart_type = .beat14k;
-            //         }
-            //         if (lane > 8) {
-            //             // This is probably pomu, which is unsupported for now
-            //             return error.UnsuportedMode;
-            //         }
-            //         output.notes[output.notes.len - 1].lane += 36;
-            //         output.notes[output.notes.len - 1].type = rhythm.NoteType{
-            //             .normal = rhythm.NormalNoteType.normal,
-            //         };
-            //         output.notes[output.notes.len - 1].keysound_id = object.value;
-            //     },
+            1 => {
+                try addBGM(
+                    allocator,
+                    &output,
+                    beat,
+                    object.value - 1,
+                );
+            },
+            37...108 => {
+                try addNote(
+                    allocator,
+                    &output,
+                    beat,
+                    object.channel,
+                    object.value - 1,
+                );
+            },
             //     109...144 => {
             //         output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
             //         output.notes[output.notes.len - 1].beat = beat;
@@ -703,7 +717,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
             //         };
             //         output.notes[output.notes.len - 1].keysound_id = object.value;
             //     },
-            //     else => {},
+            else => {},
         }
     }
 
@@ -716,5 +730,10 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
     //     thread.?.join();
     // }
 
+    if (uses_7_lanes) {
+        output.chart_type = if (is_doubles) .beat14k else .beat7k;
+    } else {
+        output.chart_type = if (is_doubles) .beat10k else .beat5k;
+    }
     return output;
 }
