@@ -8,9 +8,15 @@ const sdlAssert = @import("../../utils.zig").sdlAssert;
 const State = @import("../conductor.zig").Conductor.State;
 const Object = @import("../object.zig").Object;
 
-const BeatsPerMinute = Object.Time;
+const ma = @cImport({
+    @cDefine("MINIAUDIO_IMPLEMENTATION", {});
+    @cInclude("miniaudio.h");
+});
 
-const Parameters = BeatsPerMinute;
+pub const Lane = u8;
+pub const Keysound = *ma.ma_sound;
+
+const Parameters = ?Keysound;
 
 const sdl = @cImport({
     @cInclude("SDL2/SDL.h");
@@ -21,30 +27,29 @@ fn destroy(object: Object, allocator: std.mem.Allocator) void {
     allocator.destroy(@as(*Parameters, @alignCast(@ptrCast(object.parameters))));
 }
 
-fn process(object: Object, state: *State) void {
-    if (state.seconds_per_beat < 0 or !std.math.isNormal(state.seconds_per_beat)) {
-        state.*.seconds_offset = 0;
-    } else {
-        state.*.seconds_offset = state.convertBeatToSeconds(object.beat);
+fn processAudio(object: Object) void {
+    const parameters = @as(*Parameters, @alignCast(@ptrCast(object.parameters)));
+    if (parameters.* != null) {
+        _ = ma.ma_sound_seek_to_pcm_frame(parameters.*, 0);
+        _ = ma.ma_sound_start(parameters.*);
     }
-    state.*.beats_offset = object.beat;
-    state.*.seconds_per_beat = 60 / @as(*Parameters, @alignCast(@ptrCast(object.parameters))).*;
 }
 
-/// Creates a BPM object.
+/// Creates a Note object.
 ///
 /// **Caller is responsible of calling `destroy` to destroy the object.
 /// (If it's not null)**
 ///
 /// **Note: This is NOT the same as calling `allocator.destroy`.**
-pub fn create(allocator: std.mem.Allocator, beat: Object.Time, bpm: Object.Time) !Object {
+pub fn create(allocator: std.mem.Allocator, beat: Object.Time, sound: ?Keysound) !Object {
     var object = Object{
         .beat = beat,
         .destroy = destroy,
-        .process = process,
+        .processAudio = processAudio,
     };
     object.parameters = @ptrCast(try allocator.create(Parameters));
-    @as(*Parameters, @alignCast(@ptrCast(object.parameters))).* = bpm;
+    const params = @as(*Parameters, @alignCast(@ptrCast(object.parameters)));
+    params.* = sound;
 
     return object;
 }
