@@ -10,6 +10,8 @@ const sdl = @cImport({
     @cInclude("SDL2/SDL_ttf.h");
 });
 
+pub const ScrollDirection = enum { Up, Down };
+
 pub fn drawText(text: [:0]u8, renderer: *sdl.SDL_Renderer, x: c_int, y: c_int, font: *sdl.TTF_Font) !void {
     const surface_text: *sdl.SDL_Surface = sdl.TTF_RenderText_Solid(font, text, .{ .r = 255, .g = 255, .b = 255 }).?;
     defer sdl.SDL_FreeSurface(surface_text);

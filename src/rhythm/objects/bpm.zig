@@ -21,7 +21,7 @@ fn init(object: *Object, allocator: std.mem.Allocator) !void {
     object.parameters = @ptrCast(try allocator.create(Parameters));
 }
 
-fn destroy(object: *Object, allocator: std.mem.Allocator) void {
+fn destroy(object: Object, allocator: std.mem.Allocator) void {
     allocator.destroy(@as(*Parameters, @alignCast(@ptrCast(object.parameters))));
 }
 
@@ -40,7 +40,7 @@ fn render(
     object_position: Object.Position,
     current_position: Object.Position,
     scroll_speed: Object.Position,
-    scroll_direction: enum { Up, Down },
+    scroll_direction: gfx.ScrollDirection,
     renderer: *sdl.SDL_Renderer,
 ) !void {
     _ = object;
@@ -58,8 +58,8 @@ fn render(
         .h = c.note_height,
     };
     switch (scroll_direction) {
-        .Up => rect.y = rect.y + c.judgement_line_y,
-        .Down => rect.y = -rect.y + c.judgement_line_y - c.note_height,
+        .Up => rect.y = rect.y + c.upscroll_judgement_line_y,
+        .Down => rect.y = -rect.y + c.downscroll_judgement_line_y - c.note_height,
     }
     try sdlAssert(sdl.SDL_RenderFillRect(renderer, &rect) == 0);
 }
@@ -69,8 +69,7 @@ fn render(
 /// **Caller is responsible of calling `destroy` to destroy the object.
 /// (If it's not null)**
 ///
-/// **Note: This is not the same as calling `allocator.destroy`.
-/// That is NOT necessary here as `destroy` does all the work.**
+/// **Note: This is NOT the same as calling `allocator.destroy`.**
 pub fn createBpmObject(allocator: std.mem.Allocator, beat: Object.Time, bpm: Object.Time) !Object {
     var object = Object{
         .beat = beat,
