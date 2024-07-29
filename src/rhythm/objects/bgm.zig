@@ -35,10 +35,9 @@ fn processAudio(object: Object) void {
     }
 }
 
-/// Creates a Note object.
+/// Creates a BGM Note object.
 ///
-/// **Caller is responsible of calling `destroy` to destroy the object.
-/// (If it's not null)**
+/// **Caller is responsible of calling `destroy` to destroy the object.**
 ///
 /// **Note: This is NOT the same as calling `allocator.destroy`.**
 pub fn create(allocator: std.mem.Allocator, beat: Object.Time, sound: ?Keysound) !Object {

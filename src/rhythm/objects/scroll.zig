@@ -8,9 +8,9 @@ const sdlAssert = @import("../../utils.zig").sdlAssert;
 const State = @import("../conductor.zig").Conductor.State;
 const Object = @import("../object.zig").Object;
 
-const BeatsPerMinute = Object.Time;
+const Scroll = Object.Position;
 
-const Parameters = BeatsPerMinute;
+const Parameters = Scroll;
 
 const sdl = @cImport({
     @cInclude("SDL2/SDL.h");
@@ -22,29 +22,25 @@ fn destroy(object: Object, allocator: std.mem.Allocator) void {
 }
 
 fn process(object: Object, state: *State) void {
-    const new_bpm = @as(*Parameters, @alignCast(@ptrCast(object.parameters))).*;
-    if (state.seconds_per_beat < 0 or !std.math.isNormal(state.seconds_per_beat)) {
-        state.seconds_offset = 0;
-    } else {
-        state.seconds_offset = state.convertBeatToSeconds(object.beat);
-    }
-    state.beats_offset = object.beat;
-    state.seconds_per_beat = 60 / new_bpm;
+    const new_scroll = @as(*Parameters, @alignCast(@ptrCast(object.parameters))).*;
+    state.visual_pos_offset = state.calculateVisualPosition(object.beat);
+    state.visual_beats_offset = @floatCast(object.beat);
+    state.scroll_mul = new_scroll;
 }
 
-/// Creates a BPM object.
+/// Creates a Scroll object.
 ///
 /// **Caller is responsible of calling `destroy` to destroy the object.**
 ///
 /// **Note: This is NOT the same as calling `allocator.destroy`.**
-pub fn create(allocator: std.mem.Allocator, beat: Object.Time, bpm: Object.Time) !Object {
+pub fn create(allocator: std.mem.Allocator, beat: Object.Time, scroll: Scroll) !Object {
     var object = Object{
         .beat = beat,
         .destroy = destroy,
         .process = process,
     };
     object.parameters = @ptrCast(try allocator.create(Parameters));
-    @as(*Parameters, @alignCast(@ptrCast(object.parameters))).* = bpm;
+    @as(*Parameters, @alignCast(@ptrCast(object.parameters))).* = scroll;
 
     return object;
 }

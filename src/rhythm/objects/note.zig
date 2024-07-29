@@ -95,8 +95,7 @@ fn render(
 
 /// Creates a Note object.
 ///
-/// **Caller is responsible of calling `destroy` to destroy the object.
-/// (If it's not null)**
+/// **Caller is responsible of calling `destroy` to destroy the object.**
 ///
 /// **Note: This is NOT the same as calling `allocator.destroy`.**
 pub fn create(allocator: std.mem.Allocator, beat: Object.Time, lane: Lane, sound: ?Keysound) !Object {
@@ -108,8 +107,8 @@ pub fn create(allocator: std.mem.Allocator, beat: Object.Time, lane: Lane, sound
     };
     object.parameters = @ptrCast(try allocator.create(Parameters));
     const params = @as(*Parameters, @alignCast(@ptrCast(object.parameters)));
-    params.*.lane = lane;
-    params.*.sound = sound;
+    params.lane = lane;
+    params.sound = sound;
 
     return object;
 }
