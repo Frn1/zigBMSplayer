@@ -62,7 +62,15 @@ pub fn build(b: *std.Build) !void {
         "make",
         "miniaudio",
         "CC=zig cc",
-        b.fmt("CXXFLAGS=-O{d} -target {s}", .{ 0, try target.result.zigTriple(b.allocator) }),
+        b.fmt("CXXFLAGS=-O{s} -target {s}", .{
+            switch (optimize) {
+                .Debug => "g",
+                .ReleaseSafe => "3",
+                .ReleaseFast => "fast",
+                .ReleaseSmall => "z",
+            },
+            try target.result.zigTriple(b.allocator),
+        }),
     });
     make_miniaudio.setName("Make miniaudio object");
     exe.step.dependOn(&(make_miniaudio.step));

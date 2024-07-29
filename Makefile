@@ -1,7 +1,5 @@
-CXXFLAGS::=$(shell sdl2-config --cflags)
+CXXFLAGS::=
 ZIGFLAGS::=
-LDFLAGS::=
-LDLIBS::=-lpthread -lm -ldl $(shell sdl2-config --libs)
 BUILDDIR?=.zig-cache/precompiled
 CC?=zig cc
 
