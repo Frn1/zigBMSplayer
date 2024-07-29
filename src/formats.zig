@@ -15,6 +15,7 @@ const ma = @cImport({
 const Conductor = @import("rhythm/conductor.zig").Conductor;
 const Object = @import("rhythm/object.zig").Object;
 const ScrollObject = @import("rhythm/objects/scroll.zig");
+const StopObject = @import("rhythm/objects/stop.zig");
 const BPMObject = @import("rhythm/objects/bpm.zig");
 const BGMObject = @import("rhythm/objects/bgm.zig");
 const NoteObject = @import("rhythm/objects/note.zig");
@@ -76,6 +77,15 @@ fn addNote(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Tim
     );
 }
 
+fn addBPM(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time, bpm: Object.Time) !void {
+    conductor.objects = try allocator.realloc(conductor.objects, conductor.objects.len + 1);
+    conductor.objects[conductor.objects.len - 1] = try BPMObject.create(
+        allocator,
+        beat,
+        bpm,
+    );
+}
+
 fn addScroll(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time, scroll: Object.Position) !void {
     conductor.objects = try allocator.realloc(conductor.objects, conductor.objects.len + 1);
     conductor.objects[conductor.objects.len - 1] = try ScrollObject.create(
@@ -85,12 +95,12 @@ fn addScroll(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.T
     );
 }
 
-fn addBPM(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time, bpm: Object.Time) !void {
+fn addStop(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time, duration: Object.Time) !void {
     conductor.objects = try allocator.realloc(conductor.objects, conductor.objects.len + 1);
-    conductor.objects[conductor.objects.len - 1] = try BPMObject.create(
+    conductor.objects[conductor.objects.len - 1] = try StopObject.create(
         allocator,
         beat,
-        bpm,
+        duration,
     );
 }
 
@@ -549,21 +559,30 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
         const beat = beats_until_now + object.fraction * beats_in_measure;
 
         switch (object.channel) {
-            3 => try addBPM(allocator, &output, beat, @floatFromInt(object.value)),
-            8 => try addBPM(allocator, &output, beat, bpm_values.get(object.value).?),
-            //     9 => {
-            //         const duration_beats = 4 * @as(f80, @floatFromInt(stop_values.get(object.value).?)) / 192.0;
-            //         // std.debug.print("{} {any}\n", .{ object.value, duration_beats });
-
-            //         output.segments = try allocator.realloc(output.segments, output.segments.len + 1);
-            //         output.segments[output.segments.len - 1] = rhythm.Segment{
-            //             .beat = beat,
-            //             .type = rhythm.SegmentType{
-            //                 .stop = duration_beats,
-            //             },
-            //         };
-            //     },
-            1020 => try addScroll(allocator, &output, beat, scroll_values.get(object.value).?),
+            3 => try addBPM(
+                allocator,
+                &output,
+                beat,
+                @floatFromInt(object.value),
+            ),
+            8 => try addBPM(
+                allocator,
+                &output,
+                beat,
+                bpm_values.get(object.value).?,
+            ),
+            9 => try addStop(
+                allocator,
+                &output,
+                beat,
+                stop_values.get(object.value).?,
+            ),
+            1020 => try addScroll(
+                allocator,
+                &output,
+                beat,
+                scroll_values.get(object.value).?,
+            ),
             1 => try addBGM(
                 allocator,
                 &output,
