@@ -512,8 +512,8 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
     // Add initial bpm change
     output.objects[0] = try BPMObject.create(allocator, 0, initial_bpm);
 
-    // const ActiveLnLanesType = std.DoublyLinkedList(struct { lane: u7, note_index: usize });
-    // var active_ln_lanes = ActiveLnLanesType{};
+    const ActiveLnLanesType = std.DoublyLinkedList(struct { lane: u7, note_index: usize });
+    var active_ln_lanes = ActiveLnLanesType{};
     var last_processed_measure: BMSMeasure = 0;
     var beats_until_now: f80 = 0.0;
     var beats_in_measure: f80 = 4.0;
@@ -644,102 +644,38 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
             //         };
             //         output.notes[output.notes.len - 1].keysound_id = object.value;
             //     },
-            //     181...216 => {
-            //         output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
-            //         output.notes[output.notes.len - 1].beat = beat;
-            //         const lane = object.channel - 181;
-            //         output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
-            //             0...4 => lane + 1,
-            //             5 => 0,
-            //             else => lane - 1,
-            //         });
-            //         if (lane >= 6 and lane <= 8 and output.chart_type == .beat5k) {
-            //             output.chart_type = .beat7k;
-            //         } else if (lane >= 6 and lane <= 8 and output.chart_type == .beat10k) {
-            //             output.chart_type = .beat14k;
-            //         }
-            //         if (lane > 8) {
-            //             // This is probably pomu, which is unsupported for now
-            //             return error.UnsuportedMode;
-            //         }
-            //         var node = active_ln_lanes.first;
-            //         for (0..active_ln_lanes.len) |_| {
-            //             if (output.notes[output.notes.len - 1].lane == node.?.data.lane) {
-            //                 if (output.notes[node.?.data.note_index].keysound_id == object.value) {
-            //                     output.notes[node.?.data.note_index].type = rhythm.NoteType{
-            //                         .ln_head = output.notes.len - 1,
-            //                     };
-            //                     active_ln_lanes.remove(node.?);
-            //                     break;
-            //                 }
-            //             }
-            //             node = node.?.next;
-            //         } else {
-            //             output.notes[output.notes.len - 1].type = rhythm.NoteType{
-            //                 .ln_head = 0,
-            //             };
-            //             const new_node = try arena_allocator.create(ActiveLnLanesType.Node);
-            //             new_node.prev = active_ln_lanes.last;
-            //             new_node.data = .{
-            //                 .lane = output.notes[output.notes.len - 1].lane,
-            //                 .note_index = output.notes.len - 1,
-            //             };
-            //             active_ln_lanes.append(new_node);
-            //         }
-            //         output.notes[output.notes.len - 1].type = rhythm.NoteType{
-            //             .ln_tail = rhythm.LongNoteType.normal,
-            //         };
-            //         output.notes[output.notes.len - 1].keysound_id = object.value;
-            //     },
-            //     217...251 => {
-            //         output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
-            //         output.notes[output.notes.len - 1].beat = beat;
-            //         const lane = object.channel - 217;
-            //         output.notes[output.notes.len - 1].lane = @intCast(switch (lane) {
-            //             0...4 => lane + 1,
-            //             5 => 0,
-            //             else => lane - 1,
-            //         });
-            //         if (output.chart_type == .beat5k) {
-            //             output.chart_type = .beat10k;
-            //         }
-            //         if (lane >= 6 and lane <= 8 and (output.chart_type == .beat5k or output.chart_type == .beat10k)) {
-            //             output.chart_type = .beat14k;
-            //         }
-            //         if (lane > 8) {
-            //             // This is probably pomu, which is unsupported for now
-            //             return error.UnsuportedMode;
-            //         }
-            //         output.notes[output.notes.len - 1].lane += 36;
-            //         var node = active_ln_lanes.first;
-            //         for (0..active_ln_lanes.len) |_| {
-            //             if (output.notes[output.notes.len - 1].lane == node.?.data.lane) {
-            //                 if (output.notes[node.?.data.note_index].keysound_id == object.value) {
-            //                     output.notes[node.?.data.note_index].type = rhythm.NoteType{
-            //                         .ln_head = output.notes.len - 1,
-            //                     };
-            //                     active_ln_lanes.remove(node.?);
-            //                     break;
-            //                 }
-            //             }
-            //             node = node.?.next;
-            //         } else {
-            //             output.notes[output.notes.len - 1].type = rhythm.NoteType{
-            //                 .ln_head = 0,
-            //             };
-            //             const new_node = try allocator.create(ActiveLnLanesType.Node);
-            //             new_node.prev = active_ln_lanes.last;
-            //             new_node.data = .{
-            //                 .lane = output.notes[output.notes.len - 1].lane,
-            //                 .note_index = output.notes.len - 1,
-            //             };
-            //             active_ln_lanes.append(new_node);
-            //         }
-            //         output.notes[output.notes.len - 1].type = rhythm.NoteType{
-            //             .ln_tail = rhythm.LongNoteType.normal,
-            //         };
-            //         output.notes[output.notes.len - 1].keysound_id = object.value;
-            //     },
+            181...251 => {
+                // output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
+                // output.notes[output.notes.len - 1].beat = beat;
+                // var node = active_ln_lanes.first;
+                // for (0..active_ln_lanes.len) |_| {
+                //     if (output.notes[output.notes.len - 1].lane == node.?.data.lane) {
+                //         if (output.notes[node.?.data.note_index].keysound_id == object.value) {
+                //             output.notes[node.?.data.note_index].type = rhythm.NoteType{
+                //                 .ln_head = output.notes.len - 1,
+                //             };
+                //             active_ln_lanes.remove(node.?);
+                //             break;
+                //         }
+                //     }
+                //     node = node.?.next;
+                // } else {
+                //     output.notes[output.notes.len - 1].type = rhythm.NoteType{
+                //         .ln_head = 0,
+                //     };
+                //     const new_node = try arena_allocator.create(ActiveLnLanesType.Node);
+                //     new_node.prev = active_ln_lanes.last;
+                //     new_node.data = .{
+                //         .lane = output.notes[output.notes.len - 1].lane,
+                //         .note_index = output.notes.len - 1,
+                //     };
+                //     active_ln_lanes.append(new_node);
+                // }
+                // output.notes[output.notes.len - 1].type = rhythm.NoteType{
+                //     .ln_tail = rhythm.LongNoteType.normal,
+                // };
+                // output.notes[output.notes.len - 1].keysound_id = object.value;
+            },
             else => {},
         }
     }
