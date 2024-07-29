@@ -49,12 +49,7 @@ fn render(
     );
 }
 
-/// Creates a BPM object.
-///
-/// **Caller is responsible of calling `destroy` to destroy the object.
-/// (If it's not null)**
-///
-/// **Note: This is NOT the same as calling `allocator.destroy`.**
+/// Creates a Barline object.
 pub fn create(_: std.mem.Allocator, beat: Object.Time) !Object {
     const object = Object{
         .beat = beat,

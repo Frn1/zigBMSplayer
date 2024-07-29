@@ -143,11 +143,11 @@ pub fn main() !void {
     // the next line after creating the arena but shut
     loading_arena.deinit();
 
-    // Calculate time we hit every object
-    const object_times = try conductor.calculateSecondsAlloc(main_allocator);
-    defer main_allocator.free(object_times);
-    // Calculate position we hit every object
-    const object_positions = try conductor.calculatePositionsAlloc(main_allocator);
+    // Calculate time in seconds and position for each object
+    const object_seconds_and_positions = try conductor.calculateSecondsAndPositionsAlloc(main_allocator);
+    const object_seconds = object_seconds_and_positions.seconds;
+    defer main_allocator.free(object_seconds);
+    const object_positions = object_seconds_and_positions.positions;
     defer main_allocator.free(object_positions);
 
     // SDL window

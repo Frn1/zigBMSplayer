@@ -14,6 +14,7 @@ const ma = @cImport({
 
 const Conductor = @import("rhythm/conductor.zig").Conductor;
 const Object = @import("rhythm/object.zig").Object;
+const ScrollObject = @import("rhythm/objects/scroll.zig");
 const BPMObject = @import("rhythm/objects/bpm.zig");
 const BGMObject = @import("rhythm/objects/bgm.zig");
 const NoteObject = @import("rhythm/objects/note.zig");
@@ -32,15 +33,6 @@ fn resetCurrentKeyValue(allocator: std.mem.Allocator, current_key: *[]u8, curren
 
     current_key.* = try allocator.alloc(u8, 0);
     current_value.* = try allocator.alloc(u8, 0);
-}
-
-fn addBGM(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time, keysound_id: KeysoundId) !void {
-    conductor.objects = try allocator.realloc(conductor.objects, conductor.objects.len + 1);
-    conductor.objects[conductor.objects.len - 1] = try BGMObject.create(
-        allocator,
-        beat,
-        conductor.keysounds[keysound_id],
-    );
 }
 
 fn channelToLane(channel: BMSChannel) !NoteObject.Lane {
@@ -65,6 +57,15 @@ fn channelToLane(channel: BMSChannel) !NoteObject.Lane {
     };
 }
 
+fn addBGM(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time, keysound_id: KeysoundId) !void {
+    conductor.objects = try allocator.realloc(conductor.objects, conductor.objects.len + 1);
+    conductor.objects[conductor.objects.len - 1] = try BGMObject.create(
+        allocator,
+        beat,
+        conductor.keysounds[keysound_id],
+    );
+}
+
 fn addNote(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time, channel: BMSChannel, keysound_id: KeysoundId) !void {
     conductor.objects = try allocator.realloc(conductor.objects, conductor.objects.len + 1);
     conductor.objects[conductor.objects.len - 1] = try NoteObject.create(
@@ -72,6 +73,24 @@ fn addNote(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Tim
         beat,
         try channelToLane(channel),
         conductor.keysounds[keysound_id],
+    );
+}
+
+fn addScroll(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time, scroll: Object.Position) !void {
+    conductor.objects = try allocator.realloc(conductor.objects, conductor.objects.len + 1);
+    conductor.objects[conductor.objects.len - 1] = try ScrollObject.create(
+        allocator,
+        beat,
+        scroll,
+    );
+}
+
+fn addBPM(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time, bpm: Object.Time) !void {
+    conductor.objects = try allocator.realloc(conductor.objects, conductor.objects.len + 1);
+    conductor.objects[conductor.objects.len - 1] = try BPMObject.create(
+        allocator,
+        beat,
+        bpm,
     );
 }
 
@@ -224,6 +243,18 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
         }
     }, 80);
 
+    const VaulePositionHashMap = std.HashMap(BMSValue, Object.Position, struct {
+        pub fn hash(self: @This(), key: BMSValue) u64 {
+            _ = self;
+            return @intCast(key);
+        }
+
+        pub fn eql(self: @This(), a: BMSValue, b: BMSValue) bool {
+            _ = self;
+            return a == b;
+        }
+    }, 80);
+
     const directory_realpath = try std.fs.cwd().realpathAlloc(allocator, directory);
     defer allocator.free(directory_realpath);
     const open_directory = try std.fs.openDirAbsolute(directory_realpath, std.fs.Dir.OpenDirOptions{});
@@ -232,7 +263,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
     var initial_bpm: Object.Time = 0.0;
     var bpm_values = VauleTimeHashMap.init(arena_allocator);
     var stop_values = VauleTimeHashMap.init(arena_allocator);
-    var scroll_values = VauleTimeHashMap.init(arena_allocator);
+    var scroll_values = VaulePositionHashMap.init(arena_allocator);
 
     var parsing_channel = false;
 
@@ -276,17 +307,17 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                         const top_random_stack = random_stack.first.?;
                         if (top_random_stack.data.is_switch) {
                             if (is_skip and !top_random_stack.data.skipping and top_random_stack.data.already_matched) {
-                                top_random_stack.*.data.skipping = true;
+                                top_random_stack.data.skipping = true;
                             } else if (is_def and top_random_stack.data.skipping and !top_random_stack.data.already_matched) {
-                                top_random_stack.*.data.skipping = false;
+                                top_random_stack.data.skipping = false;
                             } else if (is_endsw) {
                                 arena_allocator.destroy(random_stack.pop().?);
                             }
                         } else {
                             if (is_else) {
-                                top_random_stack.*.data.skipping = !top_random_stack.data.skipping;
+                                top_random_stack.data.skipping = !top_random_stack.data.skipping;
                             } else if (is_endif) {
-                                top_random_stack.*.data.skipping = true;
+                                top_random_stack.data.skipping = true;
                             } else if (is_endrandom) {
                                 arena_allocator.destroy(random_stack.pop().?);
                             }
@@ -388,18 +419,18 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                                 if (top_random_stack.data.is_switch) {
                                     if (is_case and top_random_stack.data.skipping and !top_random_stack.data.already_matched) {
                                         const value_to_match = try std.fmt.parseInt(RandomNumber, current_value, 10);
-                                        if (top_random_stack.*.data.number == value_to_match) {
-                                            top_random_stack.*.data.skipping = false;
-                                            top_random_stack.*.data.already_matched = true;
+                                        if (top_random_stack.data.number == value_to_match) {
+                                            top_random_stack.data.skipping = false;
+                                            top_random_stack.data.already_matched = true;
                                         }
                                     }
                                 } else if (is_if) {
                                     const value_to_match = try std.fmt.parseInt(RandomNumber, current_value, 10);
                                     if (top_random_stack.data.number == value_to_match and top_random_stack.data.already_matched == false) {
-                                        top_random_stack.*.data.skipping = false;
-                                        top_random_stack.*.data.already_matched = true;
+                                        top_random_stack.data.skipping = false;
+                                        top_random_stack.data.already_matched = true;
                                     } else {
-                                        top_random_stack.*.data.skipping = true;
+                                        top_random_stack.data.skipping = true;
                                     }
                                 }
                             }
@@ -421,7 +452,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                                 try stop_values.put(key, stopped_time);
                             } else if (std.mem.startsWith(u8, current_key, "SCROLL")) {
                                 const key = try std.fmt.parseInt(BMSValue, current_key[6..8], 36);
-                                const new_scroll = try std.fmt.parseFloat(f64, current_value);
+                                const new_scroll = try std.fmt.parseFloat(f32, current_value);
                                 try scroll_values.put(key, new_scroll);
                             } else if (std.mem.startsWith(u8, current_key, "WAV")) {
                                 const index = try std.fmt.parseInt(BMSValue, current_key[3..5], 36) - 1;
@@ -518,22 +549,8 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
         const beat = beats_until_now + object.fraction * beats_in_measure;
 
         switch (object.channel) {
-            3 => {
-                output.objects = try allocator.realloc(output.objects, output.objects.len + 1);
-                output.objects[output.objects.len - 1] = try BPMObject.create(
-                    allocator,
-                    beat,
-                    @floatFromInt(object.value),
-                );
-            },
-            8 => {
-                output.objects = try allocator.realloc(output.objects, output.objects.len + 1);
-                output.objects[output.objects.len - 1] = try BPMObject.create(
-                    allocator,
-                    beat,
-                    bpm_values.get(object.value).?,
-                );
-            },
+            3 => try addBPM(allocator, &output, beat, @floatFromInt(object.value)),
+            8 => try addBPM(allocator, &output, beat, bpm_values.get(object.value).?),
             //     9 => {
             //         const duration_beats = 4 * @as(f80, @floatFromInt(stop_values.get(object.value).?)) / 192.0;
             //         // std.debug.print("{} {any}\n", .{ object.value, duration_beats });
@@ -546,33 +563,20 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
             //             },
             //         };
             //     },
-            //     1020 => { // Channel SC
-            //         const new_scroll = scroll_values.get(object.value).?;
-            //         output.segments = try allocator.realloc(output.segments, output.segments.len + 1);
-            //         output.segments[output.segments.len - 1] = rhythm.Segment{
-            //             .beat = beat,
-            //             .type = rhythm.SegmentType{
-            //                 .scroll = new_scroll,
-            //             },
-            //         };
-            //     },
-            1 => {
-                try addBGM(
-                    allocator,
-                    &output,
-                    beat,
-                    object.value - 1,
-                );
-            },
-            37...108 => {
-                try addNote(
-                    allocator,
-                    &output,
-                    beat,
-                    object.channel,
-                    object.value - 1,
-                );
-            },
+            1020 => try addScroll(allocator, &output, beat, scroll_values.get(object.value).?),
+            1 => try addBGM(
+                allocator,
+                &output,
+                beat,
+                object.value - 1,
+            ),
+            37...108 => try addNote(
+                allocator,
+                &output,
+                beat,
+                object.channel,
+                object.value - 1,
+            ),
             //     109...144 => {
             //         output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
             //         output.notes[output.notes.len - 1].beat = beat;

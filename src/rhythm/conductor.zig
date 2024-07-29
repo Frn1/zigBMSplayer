@@ -65,7 +65,7 @@ pub const Conductor = struct {
     pub fn calculateSecondsAndPositionsAlloc(
         self: @This(),
         allocator: std.mem.Allocator,
-    ) error{OutputTooSmall}!struct {
+    ) !struct {
         seconds: []Object.Time,
         positions: []Object.Position,
     } {
@@ -74,7 +74,7 @@ pub const Conductor = struct {
 
         // Since we allocated the outputs to be the size of the objects,
         // this can't fail for that reason
-        try self.calculateSecondsAndPositions(output_seconds, output_positions) catch |err| switch (err) {
+        self.calculateSecondsAndPositions(output_seconds, output_positions) catch |err| switch (err) {
             error.OutputTooSmall => undefined,
             else => return err,
         };
@@ -137,7 +137,7 @@ pub const Conductor = struct {
         beats_offset: Object.Time = 0,
 
         /// Beats to subtract when calculating visual position.
-        visual_beats_offset: Object.Position = 0,
+        visual_beats_offset: Object.Time = 0,
         /// Offset to add when calculating visual position.
         visual_pos_offset: Object.Position = 0,
         /// Current scroll multiplier.
@@ -160,9 +160,7 @@ pub const Conductor = struct {
         ///
         /// **(It can only guarantee accuracy from the last object until the next object)**
         pub inline fn calculateVisualPosition(self: @This(), beat: Object.Time) Object.Position {
-            return @as(Object.Position, @floatCast(
-                beat - @as(Object.Time, @floatCast(self.visual_beats_offset)),
-            )) * self.scroll_mul + self.visual_pos_offset;
+            return @as(Object.Position, @floatCast(beat - self.visual_beats_offset)) * self.scroll_mul + self.visual_pos_offset;
         }
 
         /// Convert `beats` into seconds
