@@ -18,6 +18,7 @@ fn render(
     _: Object,
     object_position: Object.Position,
     current_position: Object.Position,
+    _: []Object.Position,
     chart_type: ChartType,
     scroll_speed: Object.Position,
     scroll_direction: gfx.ScrollDirection,

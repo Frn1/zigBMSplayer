@@ -9,36 +9,17 @@ const ChartType = @import("../conductor.zig").ChartType;
 const State = @import("../conductor.zig").Conductor.State;
 const Object = @import("../object.zig").Object;
 const Keysound = @import("bgm.zig").Keysound;
+const Lane = @import("note.zig").Lane;
 
 const ma = @cImport({
     @cDefine("MINIAUDIO_IMPLEMENTATION", {});
     @cInclude("miniaudio.h");
 });
 
-pub const Lane = enum {
-    // P1 Lanes
-    Scratch_P1,
-    White1_P1,
-    Black1_P1,
-    White2_P1,
-    Black2_P1,
-    White3_P1,
-    Black3_P1,
-    White4_P1,
-    // P2 Lanes
-    Scratch_P2,
-    White1_P2,
-    Black1_P2,
-    White2_P2,
-    Black2_P2,
-    White3_P2,
-    Black3_P2,
-    White4_P2,
-};
-
 const Parameters = struct {
     lane: Lane,
     sound: ?Keysound = null,
+    tail_obj_index: usize,
 };
 
 const sdl = @cImport({
@@ -64,7 +45,7 @@ fn render(
     object: Object,
     object_position: Object.Position,
     current_position: Object.Position,
-    _: []Object.Position,
+    all_positions: []Object.Position,
     chart_type: ChartType,
     scroll_speed: Object.Position,
     scroll_direction: gfx.ScrollDirection,
@@ -72,29 +53,37 @@ fn render(
 ) !void {
     const parameters = @as(*Parameters, @alignCast(@ptrCast(object.parameters)));
 
-    var rect: sdl.SDL_Rect = sdl.SDL_Rect{
-        .x = gfx.getXForLane(parameters.lane, chart_type),
-        .y = gfx.getYFromPosition(
-            object_position,
-            current_position,
-            scroll_speed,
-            scroll_direction,
-            c.note_height,
-        ),
-        .w = gfx.getWidthForLane(parameters.lane),
-        .h = c.note_height,
-    };
-
-    if (gfx.isOffScreen(rect.y)) {
+    const tail_y = gfx.getYFromPosition(
+        all_positions[parameters.tail_obj_index],
+        current_position,
+        scroll_speed,
+        scroll_direction,
+        c.note_height,
+    );
+    if (gfx.isOffScreen(tail_y)) {
         return;
     }
+
+    const head_y = gfx.getYFromPosition(
+        object_position,
+        current_position,
+        scroll_speed,
+        scroll_direction,
+        c.note_height,
+    );
+    const rect: sdl.SDL_Rect = sdl.SDL_Rect{
+        .x = gfx.getXForLane(parameters.lane, chart_type),
+        .y = tail_y,
+        .w = gfx.getWidthForLane(parameters.lane),
+        .h = tail_y - head_y,
+    };
 
     const color = gfx.getColorForLane(parameters.lane);
     try sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a) == 0);
     try sdlAssert(sdl.SDL_RenderFillRect(renderer, &rect) == 0);
 }
 
-/// Creates a Note object.
+/// Creates a Long note head object.
 ///
 /// **Caller is responsible of calling `destroy` to destroy the object.**
 ///

@@ -72,6 +72,7 @@ pub const Object = struct {
         object: @This(),
         object_position: Object.Position,
         current_position: Object.Position,
+        all_positions: []Object.Position,
         chart_type: ChartType,
         scroll_speed: Object.Position,
         scroll_direction: ScrollDirection,
