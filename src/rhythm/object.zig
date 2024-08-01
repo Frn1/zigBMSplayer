@@ -18,6 +18,7 @@ fn emptyRender(
     _: Object,
     _: Object.Position,
     _: Object.Position,
+    _: []Object.Position,
     _: ChartType,
     _: Object.Position,
     _: ScrollDirection,
@@ -78,6 +79,11 @@ pub const Object = struct {
         scroll_direction: ScrollDirection,
         renderer: *Renderer,
     ) error{SdlError}!void = emptyRender,
+
+    /// Use this function to pointer cast the parameters
+    pub inline fn castParameters(comptime T: type, ptr: *anyopaque) *T {
+        return @as(*T, @alignCast(@ptrCast(ptr)));
+    }
 
     /// Use this function for sorting lists of objects
     pub fn lessThanFn(_: void, lhs: @This(), rhs: @This()) bool {

@@ -282,7 +282,7 @@ pub fn main() !void {
             }
         }
 
-        const position = state.calculateVisualPosition(state.beat);
+        const current_position = state.calculateVisualPosition(state.beat);
 
         defer last_frame_end = sdl.SDL_GetPerformanceCounter();
         defer sdl.SDL_RenderPresent(renderer);
@@ -296,8 +296,9 @@ pub fn main() !void {
             _ = i;
             try object.render(
                 object,
-                position,
                 object_position,
+                current_position,
+                object_positions,
                 conductor.chart_type,
                 scroll_speed_mul,
                 scroll_direction,
@@ -427,7 +428,7 @@ pub fn main() !void {
 
         try gfx.drawText(text, renderer, 0, 24 * 0, debug_font);
 
-        _ = try std.fmt.bufPrint(text, "P  {d:.3}  x{d:.3}\u{0000}", .{ position, state.scroll_mul });
+        _ = try std.fmt.bufPrint(text, "P  {d:.3}  x{d:.3}\u{0000}", .{ current_position, state.scroll_mul });
         try gfx.drawText(text, renderer, 0, 24 * 1, debug_font);
 
         _ = try std.fmt.bufPrint(text, "FPS {d:.3}\u{0000}", .{

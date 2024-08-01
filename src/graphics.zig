@@ -75,7 +75,7 @@ pub inline fn getYFromPosition(
     scroll_direction: ScrollDirection,
     height: c_int,
 ) c_int {
-    var output = @as(c_int, @intFromFloat(@round((current_position - object_position) * scroll_speed * c.beat_height)));
+    var output = @as(c_int, @intFromFloat(@round((object_position - current_position) * scroll_speed * c.beat_height)));
 
     switch (scroll_direction) {
         .Up => output += c.upscroll_judgement_line_y,

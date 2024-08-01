@@ -16,10 +16,10 @@ const ma = @cImport({
     @cInclude("miniaudio.h");
 });
 
-const Parameters = struct {
+pub const Parameters = struct {
     lane: Lane,
     sound: ?Keysound = null,
-    tail_obj_index: usize,
+    tail_obj_index: usize = undefined,
 };
 
 const sdl = @cImport({
@@ -28,13 +28,13 @@ const sdl = @cImport({
 });
 
 fn destroy(object: Object, allocator: std.mem.Allocator) void {
-    allocator.destroy(@as(*Parameters, @alignCast(@ptrCast(object.parameters))));
+    allocator.destroy(Object.castParameters(Parameters, object.parameters));
 }
 
 fn hit(
     object: Object,
 ) void {
-    const parameters = @as(*Parameters, @alignCast(@ptrCast(object.parameters)));
+    const parameters = Object.castParameters(Parameters, object.parameters);
     if (parameters.sound != null) {
         _ = ma.ma_sound_seek_to_pcm_frame(parameters.sound, 0);
         _ = ma.ma_sound_start(parameters.sound);
@@ -51,7 +51,7 @@ fn render(
     scroll_direction: gfx.ScrollDirection,
     renderer: *sdl.SDL_Renderer,
 ) !void {
-    const parameters = @as(*Parameters, @alignCast(@ptrCast(object.parameters)));
+    const parameters = Object.castParameters(Parameters, object.parameters);
 
     const tail_y = gfx.getYFromPosition(
         all_positions[parameters.tail_obj_index],
@@ -60,9 +60,9 @@ fn render(
         scroll_direction,
         c.note_height,
     );
-    if (gfx.isOffScreen(tail_y)) {
-        return;
-    }
+    // if (gfx.isOffScreen(tail_y)) {
+    //     return;
+    // }
 
     const head_y = gfx.getYFromPosition(
         object_position,
@@ -73,7 +73,7 @@ fn render(
     );
     const rect: sdl.SDL_Rect = sdl.SDL_Rect{
         .x = gfx.getXForLane(parameters.lane, chart_type),
-        .y = tail_y,
+        .y = if (scroll_direction == .Down) head_y + c.note_height else head_y,
         .w = gfx.getWidthForLane(parameters.lane),
         .h = tail_y - head_y,
     };
@@ -96,7 +96,7 @@ pub fn create(allocator: std.mem.Allocator, beat: Object.Time, lane: Lane, sound
         .hit = hit,
     };
     object.parameters = @ptrCast(try allocator.create(Parameters));
-    const params = @as(*Parameters, @alignCast(@ptrCast(object.parameters)));
+    const params = Object.castParameters(Parameters, object.parameters);
     params.lane = lane;
     params.sound = sound;
 
