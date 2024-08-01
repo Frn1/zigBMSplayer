@@ -19,6 +19,46 @@ const utils = @import("utils.zig");
 const audio = @import("audio.zig");
 
 pub fn main() !void {
+    // --- Initialization ---
+    
+    // init sdl
+    try utils.sdlAssert(
+        sdl.SDL_Init(@intCast(sdl.SDL_INIT_TIMER | sdl.SDL_INIT_VIDEO | sdl.SDL_INIT_EVENTS)) == 0,
+    );
+    defer sdl.SDL_Quit();
+
+    try utils.sdlAssert(sdl.TTF_Init() == 0);
+    defer sdl.TTF_Quit();
+
+    // SDL window
+    const window: *sdl.SDL_Window = sdl.SDL_CreateWindow(
+        "Zig BMS Player",
+        sdl.SDL_WINDOWPOS_CENTERED,
+        sdl.SDL_WINDOWPOS_CENTERED,
+        c.screen_width,
+        c.screen_height,
+        sdl.SDL_WINDOW_RESIZABLE,
+    ).?;
+    defer sdl.SDL_DestroyWindow(window);
+
+    // SDL renderer
+    const renderer: *sdl.SDL_Renderer = sdl.SDL_CreateRenderer(
+        window,
+        -1,
+        sdl.SDL_RENDERER_ACCELERATED,
+    ).?;
+    defer sdl.SDL_DestroyRenderer(renderer);
+
+    const debug_font: *sdl.TTF_Font = sdl.TTF_OpenFont("fonts/RobotoMono.ttf", 24).?;
+    defer sdl.TTF_CloseFont(debug_font);
+
+    try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF) == 0);
+    try utils.sdlAssert(sdl.SDL_RenderClear(renderer) == 0);
+    sdl.SDL_RenderPresent(renderer);
+    
+    try gfx.drawText("SDL initialized", renderer, 0, 24 * 0, debug_font);
+    sdl.SDL_RenderPresent(renderer);
+    
     // Main allocator we use
     // We use GeneralPurposeAllocator in debug, C Allocator in release
     var main_allocator: std.mem.Allocator = undefined;
@@ -34,16 +74,10 @@ pub fn main() !void {
         //fail test; can't try in defer as defer is executed after we return
         if (deinit_status == .leak) @panic("Memory leak :(");
     };
-
-    // init sdl
-    try utils.sdlAssert(
-        sdl.SDL_Init(@intCast(sdl.SDL_INIT_TIMER | sdl.SDL_INIT_VIDEO | sdl.SDL_INIT_EVENTS)) == 0,
-    );
-    defer sdl.SDL_Quit();
-
-    try utils.sdlAssert(sdl.TTF_Init() == 0);
-    defer sdl.TTF_Quit();
-
+    
+    try gfx.drawText("Main alloc initialized", renderer, 0, 24 * 1, debug_font);
+    sdl.SDL_RenderPresent(renderer);
+    
     // init miniaudio
     const ma_engine: *ma.ma_engine = try main_allocator.create(ma.ma_engine);
     defer main_allocator.destroy(ma_engine);
@@ -56,6 +90,9 @@ pub fn main() !void {
         return error.MiniaudioError; // Failed to initialize the engine.
     }
     defer ma.ma_engine_uninit(ma_engine);
+    
+    try gfx.drawText("Miniaudio initialized", renderer, 0, 24 * 2, debug_font);
+    sdl.SDL_RenderPresent(renderer);
 
     var scroll_speed_mul: f80 = 2.0;
 
@@ -63,6 +100,9 @@ pub fn main() !void {
     // Allocator used when loading stuff that wont stay after loading
     const loading_allocator = loading_arena.allocator();
 
+    try gfx.drawText("Loading alloc initialized", renderer, 0, 24 * 3, debug_font);
+    sdl.SDL_RenderPresent(renderer);
+    
     const args = try std.process.argsAlloc(loading_allocator);
     if (args.len < 2) {
         std.log.err("ERROR: Missing path\n", .{});
@@ -86,6 +126,9 @@ pub fn main() !void {
         return e;
     };
     defer chart_file.close();
+    
+    try gfx.drawText("BMS file read - Compiling now...", renderer, 0, 24 * 4, debug_font);
+    sdl.SDL_RenderPresent(renderer);
 
     // TODO: Multiple conductors/timing groups???
     var conductor = formats.compileBMS(
@@ -116,6 +159,9 @@ pub fn main() !void {
     defer main_allocator.free(conductor.notes);
     defer main_allocator.free(conductor.segments);
 
+    try gfx.drawText("BMS file read - Compiling now... Done!", renderer, 0, 24 * 4, debug_font);
+    sdl.SDL_RenderPresent(renderer);
+
     // Free everything in the loading arena
     // YEAH I KNOW I should be doing this with defer
     // the next line after creating the arena but shut
@@ -125,6 +171,9 @@ pub fn main() !void {
     try conductor.createObjects(main_allocator);
     defer conductor.deleteObjects(main_allocator);
 
+    try gfx.drawText("Objects created", renderer, 0, 24 * 5, debug_font);
+    sdl.SDL_RenderPresent(renderer);
+
     // Calculate time we hit every object
     const object_times = try conductor.calculateObjectTimesInSeconds(main_allocator);
     defer main_allocator.free(object_times);
@@ -132,39 +181,20 @@ pub fn main() !void {
     const object_positions = try conductor.calculateVisualBeats(main_allocator);
     defer main_allocator.free(object_positions);
 
-    // SDL window
-    const window: *sdl.SDL_Window = sdl.SDL_CreateWindow(
-        "Zig BMS Player",
-        sdl.SDL_WINDOWPOS_CENTERED,
-        sdl.SDL_WINDOWPOS_CENTERED,
-        c.screen_width,
-        c.screen_height,
-        sdl.SDL_WINDOW_RESIZABLE,
-    ).?;
-    defer sdl.SDL_DestroyWindow(window);
+    try gfx.drawText("Object times and positions calculated", renderer, 0, 24 * 6, debug_font);
+    sdl.SDL_RenderPresent(renderer);
 
-    // SDL renderer
-    const renderer: *sdl.SDL_Renderer = sdl.SDL_CreateRenderer(
-        window,
-        -1,
-        sdl.SDL_RENDERER_ACCELERATED,
-    ).?;
-    defer sdl.SDL_DestroyRenderer(renderer);
-
-    const debug_font: *sdl.TTF_Font = sdl.TTF_OpenFont("fonts/RobotoMono.ttf", 24).?;
-    defer sdl.TTF_CloseFont(debug_font);
-
-    var state = rhythm.ConductorState{};
-
+    // --- Game loop ---
+    
+    // the start of the performance tick counter
+    const start_tick = sdl.SDL_GetPerformanceCounter();
+    
     // how many ticks are in a second
     const performance_frequency: f80 = @floatFromInt(sdl.SDL_GetPerformanceFrequency());
 
-    // the start of the performance tick counter
-    const start_tick = sdl.SDL_GetPerformanceCounter();
-
     // used for fps
     var last_frame_end = sdl.SDL_GetPerformanceCounter();
-
+    
     var audio_stop_flag = false;
     const audioThread = try std.Thread.spawn(.{ .allocator = main_allocator }, audio.audioThread, .{
         &conductor,
@@ -174,6 +204,14 @@ pub fn main() !void {
     });
     defer audioThread.join();
     defer audio_stop_flag = true;
+
+    try gfx.drawText("Audio thread created", renderer, 0, 24 * 7, debug_font);
+    sdl.SDL_RenderPresent(renderer);
+
+    try gfx.drawText("Initialization done!", renderer, 0, 24 * 5, debug_font);
+    sdl.SDL_RenderPresent(renderer);
+
+    var state = rhythm.ConductorState{};
 
     // Event loop
     main_loop: while (true) {
@@ -224,8 +262,8 @@ pub fn main() !void {
 
         const visual_beat = state.calculateVisualPosition(state.current_beat);
 
-        defer sdl.SDL_RenderPresent(renderer);
         defer last_frame_end = sdl.SDL_GetPerformanceCounter();
+        defer sdl.SDL_RenderPresent(renderer);
 
         try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF) == 0);
         try utils.sdlAssert(sdl.SDL_RenderClear(renderer) == 0);

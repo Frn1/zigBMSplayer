@@ -8,7 +8,7 @@ const sdl = @cImport({
 const c = @import("consts.zig");
 const utils = @import("utils.zig");
 
-pub fn drawText(text: [:0]u8, renderer: *sdl.SDL_Renderer, x: c_int, y: c_int, font: *sdl.TTF_Font) !void {
+pub fn drawText(text: [:0]const u8, renderer: *sdl.SDL_Renderer, x: c_int, y: c_int, font: *sdl.TTF_Font) !void {
     const surface_text: *sdl.SDL_Surface = sdl.TTF_RenderText_Solid(font, text, .{ .r = 255, .g = 255, .b = 255 }).?;
     defer sdl.SDL_FreeSurface(surface_text);
     const texture_text: *sdl.SDL_Texture = sdl.SDL_CreateTextureFromSurface(renderer, surface_text).?;
