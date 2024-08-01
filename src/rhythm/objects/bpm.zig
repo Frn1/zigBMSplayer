@@ -18,11 +18,11 @@ const sdl = @cImport({
 });
 
 fn destroy(object: Object, allocator: std.mem.Allocator) void {
-    allocator.destroy(@as(*Parameters, @alignCast(@ptrCast(object.parameters))));
+    allocator.destroy(Object.castParameters(Parameters, object.parameters));
 }
 
 fn process(object: Object, state: *State) void {
-    const new_bpm = @as(*Parameters, @alignCast(@ptrCast(object.parameters))).*;
+    const new_bpm = Object.castParameters(Parameters, object.parameters).*;
     if (state.seconds_per_beat < 0 or !std.math.isNormal(state.seconds_per_beat)) {
         state.seconds_offset = 0;
     } else {
@@ -44,7 +44,7 @@ pub fn create(allocator: std.mem.Allocator, beat: Object.Time, bpm: Object.Time)
         .process = process,
     };
     object.parameters = @ptrCast(try allocator.create(Parameters));
-    @as(*Parameters, @alignCast(@ptrCast(object.parameters))).* = bpm;
+    Object.castParameters(Parameters, object.parameters).* = bpm;
 
     return object;
 }

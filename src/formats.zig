@@ -19,6 +19,8 @@ const StopObject = @import("rhythm/objects/stop.zig");
 const BPMObject = @import("rhythm/objects/bpm.zig");
 const BGMObject = @import("rhythm/objects/bgm.zig");
 const NoteObject = @import("rhythm/objects/note.zig");
+const LNHeadObject = @import("rhythm/objects/ln_head.zig");
+const LNTailObject = @import("rhythm/objects/ln_tail.zig");
 const BarlineObject = @import("rhythm/objects/barline.zig");
 const Lane = @import("rhythm/objects/note.zig").Lane;
 
@@ -38,22 +40,22 @@ fn resetCurrentKeyValue(allocator: std.mem.Allocator, current_key: *[]u8, curren
 
 fn channelToLane(channel: BMSChannel) !NoteObject.Lane {
     return switch (channel) {
-        37 => Lane.White1_P1,
-        38 => Lane.Black1_P1,
-        39 => Lane.White2_P1,
-        40 => Lane.Black2_P1,
-        41 => Lane.White3_P1,
-        42 => Lane.Scratch_P1,
-        44 => Lane.Black3_P1,
-        45 => Lane.White4_P1,
-        73 => Lane.White1_P2,
-        74 => Lane.Black1_P2,
-        75 => Lane.White2_P2,
-        76 => Lane.Black2_P2,
-        77 => Lane.White3_P2,
-        78 => Lane.Scratch_P2,
-        80 => Lane.Black3_P2,
-        81 => Lane.White4_P2,
+        0 => Lane.White1_P1,
+        1 => Lane.Black1_P1,
+        2 => Lane.White2_P1,
+        3 => Lane.Black2_P1,
+        4 => Lane.White3_P1,
+        5 => Lane.Scratch_P1,
+        7 => Lane.Black3_P1,
+        8 => Lane.White4_P1,
+        36 => Lane.White1_P2,
+        37 => Lane.Black1_P2,
+        38 => Lane.White2_P2,
+        39 => Lane.Black2_P2,
+        40 => Lane.White3_P2,
+        41 => Lane.Scratch_P2,
+        43 => Lane.Black3_P2,
+        44 => Lane.White4_P2,
         else => return error.UnknownGameMode, // The channel isnt in here, so it's probably something else
     };
 }
@@ -67,14 +69,29 @@ fn addBGM(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time
     );
 }
 
-fn addNote(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time, channel: BMSChannel, keysound_id: KeysoundId) !void {
+fn addNote(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time, lane: Lane, keysound_id: KeysoundId) !void {
     conductor.objects = try allocator.realloc(conductor.objects, conductor.objects.len + 1);
     conductor.objects[conductor.objects.len - 1] = try NoteObject.create(
         allocator,
         beat,
-        try channelToLane(channel),
+        lane,
         conductor.keysounds[keysound_id],
     );
+}
+
+fn addLNHead(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time, lane: Lane, keysound_id: KeysoundId) !void {
+    conductor.objects = try allocator.realloc(conductor.objects, conductor.objects.len + 1);
+    conductor.objects[conductor.objects.len - 1] = try LNHeadObject.create(
+        allocator,
+        beat,
+        lane,
+        conductor.keysounds[keysound_id],
+    );
+}
+
+fn addLNTail(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time) !void {
+    conductor.objects = try allocator.realloc(conductor.objects, conductor.objects.len + 1);
+    conductor.objects[conductor.objects.len - 1] = LNTailObject.create(beat);
 }
 
 fn addBPM(allocator: std.mem.Allocator, conductor: *Conductor, beat: Object.Time, bpm: Object.Time) !void {
@@ -512,7 +529,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
     // Add initial bpm change
     output.objects[0] = try BPMObject.create(allocator, 0, initial_bpm);
 
-    const ActiveLnLanesType = std.DoublyLinkedList(struct { lane: u7, note_index: usize });
+    const ActiveLnLanesType = std.DoublyLinkedList(struct { lane: NoteObject.Lane, note_index: usize });
     var active_ln_lanes = ActiveLnLanesType{};
     var last_processed_measure: BMSMeasure = 0;
     var beats_until_now: f80 = 0.0;
@@ -520,16 +537,6 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
     var is_doubles = false;
     var uses_7_lanes = false;
     for (bms_objects) |object| {
-        if ((object.channel > 43 and object.channel < 46) or
-            (object.channel > 79 and object.channel < 82))
-        {
-            uses_7_lanes = true;
-        }
-
-        if (object.channel > 72 and object.channel < 108) {
-            is_doubles = true;
-        }
-
         if (last_processed_measure != object.measure) {
             for (last_processed_measure..object.measure) |measure_usize| {
                 const measure: BMSMeasure = @intCast(measure_usize);
@@ -589,13 +596,30 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                 beat,
                 object.value - 1,
             ),
-            37...108 => try addNote(
-                allocator,
-                &output,
-                beat,
-                object.channel,
-                object.value - 1,
-            ),
+            37...108 => {
+                const lane = try channelToLane(object.channel - 37);
+                switch (lane) {
+                    .Black3_P1, .White4_P1 => {
+                        uses_7_lanes = true;
+                    },
+                    .White1_P2, .Black1_P2, .White2_P2, .Black2_P2, .White3_P2, .Scratch_P2 => {
+                        is_doubles = true;
+                    },
+                    .Black3_P2, .White4_P2 => {
+                        uses_7_lanes = true;
+                        is_doubles = true;
+                    },
+                    else => {},
+                }
+
+                try addNote(
+                    allocator,
+                    &output,
+                    beat,
+                    lane,
+                    object.value - 1,
+                );
+            },
             //     109...144 => {
             //         output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
             //         output.notes[output.notes.len - 1].beat = beat;
@@ -645,36 +669,43 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
             //         output.notes[output.notes.len - 1].keysound_id = object.value;
             //     },
             181...251 => {
-                // output.notes = try allocator.realloc(output.notes, output.notes.len + 1);
-                // output.notes[output.notes.len - 1].beat = beat;
-                // var node = active_ln_lanes.first;
-                // for (0..active_ln_lanes.len) |_| {
-                //     if (output.notes[output.notes.len - 1].lane == node.?.data.lane) {
-                //         if (output.notes[node.?.data.note_index].keysound_id == object.value) {
-                //             output.notes[node.?.data.note_index].type = rhythm.NoteType{
-                //                 .ln_head = output.notes.len - 1,
-                //             };
-                //             active_ln_lanes.remove(node.?);
-                //             break;
-                //         }
-                //     }
-                //     node = node.?.next;
-                // } else {
-                //     output.notes[output.notes.len - 1].type = rhythm.NoteType{
-                //         .ln_head = 0,
-                //     };
-                //     const new_node = try arena_allocator.create(ActiveLnLanesType.Node);
-                //     new_node.prev = active_ln_lanes.last;
-                //     new_node.data = .{
-                //         .lane = output.notes[output.notes.len - 1].lane,
-                //         .note_index = output.notes.len - 1,
-                //     };
-                //     active_ln_lanes.append(new_node);
-                // }
-                // output.notes[output.notes.len - 1].type = rhythm.NoteType{
-                //     .ln_tail = rhythm.LongNoteType.normal,
-                // };
-                // output.notes[output.notes.len - 1].keysound_id = object.value;
+                const lane = try channelToLane(object.channel - 181);
+                switch (lane) {
+                    .Black3_P1, .White4_P1 => {
+                        uses_7_lanes = true;
+                    },
+                    .White1_P2, .Black1_P2, .White2_P2, .Black2_P2, .White3_P2, .Scratch_P2 => {
+                        is_doubles = true;
+                    },
+                    .Black3_P2, .White4_P2 => {
+                        uses_7_lanes = true;
+                        is_doubles = true;
+                    },
+                    else => {},
+                }
+
+                var node = active_ln_lanes.first;
+                for (0..active_ln_lanes.len) |_| {
+                    if (lane == node.?.data.lane) {
+                        const ln_head_parameters = Object.castParameters(LNHeadObject.Parameters, output.objects[node.?.data.note_index].parameters);
+                        if (output.keysounds[object.value] == ln_head_parameters.sound) {
+                            try addLNTail(allocator, &output, beat);
+                            ln_head_parameters.tail_obj_index = output.objects.len - 1;
+                            active_ln_lanes.remove(node.?);
+                            break;
+                        }
+                    }
+                    node = node.?.next;
+                } else {
+                    try addLNHead(allocator, &output, beat, lane, object.value);
+                    const new_node = try arena_allocator.create(ActiveLnLanesType.Node);
+                    new_node.prev = active_ln_lanes.last;
+                    new_node.data = .{
+                        .lane = lane,
+                        .note_index = output.objects.len - 1,
+                    };
+                    active_ln_lanes.append(new_node);
+                }
             },
             else => {},
         }

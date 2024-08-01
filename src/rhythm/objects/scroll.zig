@@ -18,11 +18,11 @@ const sdl = @cImport({
 });
 
 fn destroy(object: Object, allocator: std.mem.Allocator) void {
-    allocator.destroy(@as(*Parameters, @alignCast(@ptrCast(object.parameters))));
+    allocator.destroy(Object.castParameters(Parameters, object.parameters));
 }
 
 fn process(object: Object, state: *State) void {
-    const new_scroll = @as(*Parameters, @alignCast(@ptrCast(object.parameters))).*;
+    const new_scroll = Object.castParameters(Parameters, object.parameters).*;
     state.visual_pos_offset = state.calculateVisualPosition(object.beat);
     state.visual_beats_offset = @floatCast(object.beat);
     state.scroll_mul = new_scroll;
@@ -40,7 +40,7 @@ pub fn create(allocator: std.mem.Allocator, beat: Object.Time, scroll: Scroll) !
         .process = process,
     };
     object.parameters = @ptrCast(try allocator.create(Parameters));
-    @as(*Parameters, @alignCast(@ptrCast(object.parameters))).* = scroll;
+    Object.castParameters(Parameters, object.parameters).* = scroll;
 
     return object;
 }

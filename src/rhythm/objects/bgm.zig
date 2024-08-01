@@ -24,11 +24,11 @@ const sdl = @cImport({
 });
 
 fn destroy(object: Object, allocator: std.mem.Allocator) void {
-    allocator.destroy(@as(*Parameters, @alignCast(@ptrCast(object.parameters))));
+    allocator.destroy(Object.castParameters(Parameters, object.parameters));
 }
 
 fn processAudio(object: Object) void {
-    const parameters = @as(*Parameters, @alignCast(@ptrCast(object.parameters)));
+    const parameters = Object.castParameters(Parameters, object.parameters);
     if (parameters.* != null) {
         _ = ma.ma_sound_seek_to_pcm_frame(parameters.*, 0);
         _ = ma.ma_sound_start(parameters.*);
@@ -47,7 +47,7 @@ pub fn create(allocator: std.mem.Allocator, beat: Object.Time, sound: ?Keysound)
         .processAudio = processAudio,
     };
     object.parameters = @ptrCast(try allocator.create(Parameters));
-    const params = @as(*Parameters, @alignCast(@ptrCast(object.parameters)));
+    const params = Object.castParameters(Parameters, object.parameters);
     params.* = sound;
 
     return object;
