@@ -5,7 +5,7 @@ fn addSDLLibrary(name: []const u8, b: *std.Build, target: std.Build.ResolvedTarg
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const sdl_triple = try std.fmt.allocPrint(allocator, "{s}-w64-mingw32", .{
+    const sdl_triple = b.fmt("{s}-w64-mingw32", .{
         if (target.result.ptrBitWidth() == 64) "x86_64" else "i686",
     });
     const include_path = try std.fs.path.join(allocator, &.{ sdl_triple, "include" });
@@ -34,6 +34,19 @@ fn addSDLLibrary(name: []const u8, b: *std.Build, target: std.Build.ResolvedTarg
             sys_lib_name,
         );
         install.dependOn(&install_data.step);
+        if (std.mem.eql(u8, name, "SDL2")) {
+            const license_file_step = b.addInstallFile(
+                dependency.path("COPYING.txt"),
+                b.fmt("bin/{s}-LICENSE.txt", .{name}),
+            );
+            install.dependOn(&license_file_step.step);
+        } else {
+            const license_file_step = b.addInstallFile(
+                dependency.path("LICENSE.txt"),
+                b.fmt("bin/{s}-LICENSE.txt", .{name}),
+            );
+            install.dependOn(&license_file_step.step);
+        }
     }
 
     exe.linkSystemLibrary(name);
