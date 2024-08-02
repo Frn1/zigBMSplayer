@@ -87,12 +87,11 @@ pub fn main() !void {
     const renderer: *sdl.SDL_Renderer = sdl.SDL_CreateRenderer(
         window,
         -1,
-        sdl.SDL_RENDERER_ACCELERATED,
+        sdl.SDL_RENDERER_ACCELERATED | sdl.SDL_RENDERER_PRESENTVSYNC,
     ).?;
     defer sdl.SDL_DestroyRenderer(renderer);
 
     const exe_folder_path = try std.fs.selfExeDirPathAlloc(loading_allocator);
-    defer loading_allocator.free(exe_folder_path);
     const exe_dir = try std.fs.openDirAbsolute(exe_folder_path, .{});
 
     const debug_font_path = a: {
@@ -100,7 +99,6 @@ pub fn main() !void {
         var buf: [std.fs.max_path_bytes]u8 = undefined;
         break :a try loading_allocator.dupeZ(u8, try exe_dir.realpathZ("../fonts/RobotoMono.ttf", buf[0..]));
     };
-    defer loading_allocator.free(debug_font_path);
     const debug_font: *sdl.TTF_Font = sdl.TTF_OpenFont(debug_font_path, 24).?;
     defer sdl.TTF_CloseFont(debug_font);
 
@@ -126,6 +124,9 @@ pub fn main() !void {
 
     try gfx.drawText("Miniaudio initialized", renderer, 0, 24 * 2, debug_font);
     sdl.SDL_RenderPresent(renderer);
+
+    var scroll_speed_mul: Object.Position = 2.0;
+    const scroll_direction: gfx.ScrollDirection = .Down;
 
     const args = try std.process.argsAlloc(loading_allocator);
     if (args.len < 2) {
@@ -226,8 +227,6 @@ pub fn main() !void {
     try gfx.drawText("Initialization done!", renderer, 0, 24 * 5, debug_font);
     sdl.SDL_RenderPresent(renderer);
 
-    var scroll_speed_mul = 2.5;
-
     // Event loop
     main_loop: while (true) {
         // if (sdl.SDL_GetPerformanceCounter() - last_frame_end < sdl.SDL_GetPerformanceFrequency() / c.fps) {
@@ -299,132 +298,20 @@ pub fn main() !void {
             );
         }
 
-        // // Draw barlines BEFORE notes so they appear behind the notes
-        // for (conductor.objects, object_positions, 0..) |object, position, i| {
-        //     var render_y = @as(i32, @intFromFloat((visual_beat - position.visual_beat) * scroll_speed_mul * c.beat_height));
-        //     render_y += c.judgement_line_y;
-
-        //     if (render_y < -c.note_height) {
-        //         continue;
-        //     }
-
-        //     if (object.obj_type == .Segment) {
-        //         if (render_y > c.screen_height + c.note_height) {
-        //             continue;
-        //         }
-
-        //         // change color to white
-        //         try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF) == 0);
-
-        //         const segment = conductor.segments[conductor.objects[i].index];
-        //         switch (segment.type) {
-        //             .barline => {
-        //                 try utils.sdlAssert(sdl.SDL_RenderDrawLine(
-        //                     renderer,
-        //                     0,
-        //                     render_y,
-        //                     gfx.getXForLane(
-        //                         @as(u7, switch (conductor.chart_type) {
-        //                             .beat5k => 5 + 1,
-        //                             .beat7k => 7 + 1,
-        //                             .beat10k => 10 + 2,
-        //                             .beat14k => 14 + 2,
-        //                         }),
-        //                     ),
-        //                     render_y,
-        //                 ) == 0);
-        //             },
-        //             else => {},
-        //         }
-        //     }
-        // }
-
-        // // And NOW we draw the notes
-        // for (conductor.objects, object_positions, 0..) |object, position, i| {
-        //     var render_y = @as(i32, @intFromFloat((visual_beat - position.visual_beat) * scroll_speed_mul * c.beat_height));
-        //     render_y += c.judgement_line_y;
-
-        //     if (render_y < -c.note_height) {
-        //         continue;
-        //     }
-
-        //     if (object.obj_type == .Note) {
-        //         const note = conductor.notes[conductor.objects[i].index];
-
-        //         // TODO: PMS detection and support
-        //         const lane = switch (note.lane) {
-        //             36 => 15,
-        //             37...45 => note.lane - 29,
-        //             else => note.lane,
-        //         };
-
-        //         const render_x = gfx.getXForLane(lane);
-
-        //         // set lane color
-        //         const color = gfx.getColorForLane(lane);
-        //         try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a) == 0);
-
-        //         switch (note.type) {
-        //             .normal => {
-        //                 if (render_y > c.screen_height) {
-        //                     continue;
-        //                 }
-
-        //                 switch (note.type.normal) {
-        //                     .mine => {
-        //                         // change color to yellow
-        //                         try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0x00, 0xFF) == 0);
-        //                     },
-        //                     .hidden => {
-        //                         // change color to green
-        //                         try utils.sdlAssert(sdl.SDL_SetRenderDrawColor(renderer, 0x00, 0xA0, 0x00, 0xFF) == 0);
-        //                     },
-        //                     else => {},
-        //                 }
-
-        //                 const note_rect: sdl.SDL_Rect = sdl.SDL_Rect{
-        //                     .x = render_x,
-        //                     .y = render_y - c.note_height,
-        //                     .w = gfx.getWidthForLane(lane),
-        //                     .h = c.note_height,
-        //                 };
-        //                 try utils.sdlAssert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
-        //             },
-        //             .ln_head => {
-        //                 var tail_render_y = @as(i32, @intFromFloat(
-        //                     (visual_beat - object_positions[position.ln_tail_obj_index.?].visual_beat) * scroll_speed_mul * c.beat_height,
-        //                 ));
-        //                 tail_render_y += c.judgement_line_y;
-        //                 if (tail_render_y > c.screen_height) {
-        //                     continue;
-        //                 }
-        //                 const note_rect: sdl.SDL_Rect = sdl.SDL_Rect{
-        //                     .x = render_x,
-        //                     .y = tail_render_y,
-        //                     .w = gfx.getWidthForLane(lane),
-        //                     .h = render_y - tail_render_y,
-        //                 };
-        //                 try utils.sdlAssert(sdl.SDL_RenderFillRect(renderer, &note_rect) == 0);
-        //             },
-        //             else => {},
-        //         }
-        //     }
-        // }
-
         // draw text used for debuging
         const text: [:0]u8 = try frame_allocator.allocSentinel(u8, 64, 0);
 
-        _ = try std.fmt.bufPrint(text, "B   {d:.3}   {d:.3}\u{0000}", .{
+        _ = try std.fmt.bufPrintZ(text, "B   {d:.3}   {d:.3}", .{
             state.beat,
             60.0 / state.seconds_per_beat,
         });
 
         try gfx.drawText(text, renderer, 0, 24 * 0, debug_font);
 
-        _ = try std.fmt.bufPrint(text, "P  {d:.3}  x{d:.3}\u{0000}", .{ current_position, state.scroll_mul });
+        _ = try std.fmt.bufPrintZ(text, "P  {d:.3}  x{d:.3}", .{ current_position, state.scroll_mul });
         try gfx.drawText(text, renderer, 0, 24 * 1, debug_font);
 
-        _ = try std.fmt.bufPrint(text, "FPS {d:.3}\u{0000}", .{
+        _ = try std.fmt.bufPrintZ(text, "FPS {d:.3}", .{
             performance_frequency / @as(
                 f80,
                 @floatFromInt(sdl.SDL_GetPerformanceCounter() - last_frame_end),
@@ -432,7 +319,7 @@ pub fn main() !void {
         });
         try gfx.drawText(text, renderer, 0, 24 * 2, debug_font);
 
-        _ = try std.fmt.bufPrint(text, "SC  {d:.1}\u{0000}", .{scroll_speed_mul});
+        _ = try std.fmt.bufPrintZ(text, "SC  {d:.1}", .{scroll_speed_mul});
         try gfx.drawText(text, renderer, 0, 24 * 3, debug_font);
     }
 }
