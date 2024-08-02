@@ -207,6 +207,8 @@ pub fn main() !void {
 
     // --- Game loop ---
 
+    var state = Conductor.State{};
+
     // the start of the performance tick counter
     const start_tick = sdl.SDL_GetPerformanceCounter();
 
