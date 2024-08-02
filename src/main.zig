@@ -173,6 +173,10 @@ pub fn main() !void {
         // std.process.exit(1);
     };
 
+    sdl.SDL_SetWindowResizable(window, sdl.SDL_FALSE);
+    sdl.SDL_SetWindowSize(window, gfx.getBarlineWidth(conductor.chart_type), c.screen_height);
+    sdl.SDL_SetWindowPosition(window, sdl.SDL_WINDOWPOS_CENTERED, sdl.SDL_WINDOWPOS_CENTERED);
+
     // Make sure to unload the keysounds
     defer for (conductor.keysounds) |sound| {
         if (sound != null) {
