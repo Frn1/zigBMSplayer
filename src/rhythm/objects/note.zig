@@ -34,6 +34,8 @@ pub const Lane = enum {
     White3_P2,
     Black3_P2,
     White4_P2,
+    
+    const number_of_lanes = @typeInfo(@This()).Enum.fields.len;
 };
 
 const Parameters = struct {

@@ -287,6 +287,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
     const open_directory = try std.fs.openDirAbsolute(directory_realpath, std.fs.Dir.OpenDirOptions{});
     // var keysoundThreads: [1295]?std.Thread = .{null} ** 1295;
 
+    var ln_obj: ?BMSValue = null;
     var initial_bpm: Object.Time = 0.0;
     var bpm_values = VauleTimeHashMap.init(arena_allocator);
     var stop_values = VauleTimeHashMap.init(arena_allocator);
@@ -481,6 +482,9 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                                 const key = try std.fmt.parseInt(BMSValue, current_key[6..8], 36);
                                 const new_scroll = try std.fmt.parseFloat(f32, current_value);
                                 try scroll_values.put(key, new_scroll);
+                            } else 
+                            if (std.mem.eql(u8, current_key, "LNOBJ")) {
+                                ln_obj = try std.fmt.parseInt(BMSValue, current_value, 36) - 1;
                             } else if (std.mem.startsWith(u8, current_key, "WAV")) {
                                 const index = try std.fmt.parseInt(BMSValue, current_key[3..5], 36) - 1;
 
@@ -536,6 +540,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
     var beats_in_measure: f80 = 4.0;
     var is_doubles = false;
     var uses_7_lanes = false;
+    var last_note_index_for_lane: [Lane.number_of_lanes]?usize = .{null} ** Lane.number_of_lanes; 
     for (bms_objects) |object| {
         if (last_processed_measure != object.measure) {
             for (last_processed_measure..object.measure) |measure_usize| {
@@ -598,6 +603,7 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
             ),
             37...108 => {
                 const lane = try channelToLane(object.channel - 37);
+                
                 switch (lane) {
                     .Black3_P1, .White4_P1 => {
                         uses_7_lanes = true;
@@ -610,6 +616,19 @@ pub fn compileBMS(allocator: std.mem.Allocator, ma_engine: [*c]ma.ma_engine, dir
                         is_doubles = true;
                     },
                     else => {},
+                }
+                
+                const last_note_index_in_lane = last_note_index_for_lane[@intFromEnum(lane)];
+                defer last_note_index_for_lane[@intFromEnum(lane)] = output.objects.len;
+                if (last_note_index_in_lane != null and ln_obj != null) {
+                    const last_index_in_lane = last_note_index_in_lane.?;
+                    const last_note_in_lane = output.objects[last_index_in_lane];
+                    const parameters = Object.castParameters(NoteObject.Parameters, last_note_in_lane.parameters);
+                    if (parameters.sound == output.keysounds[ln_obj.?]) {
+                        // TODO: Convert note to LN Head
+                        // TODO: Add LN Tail
+                        continue; // Stop the code from adding a normal note
+                    }
                 }
 
                 try addNote(
