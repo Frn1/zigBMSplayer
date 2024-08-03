@@ -10,7 +10,7 @@ const sdl = @cImport({
     @cInclude("SDL2/SDL_ttf.h");
 });
 
-const Conductor = @import("rhythm/conductor.zig").Conductor;
+const Conductor = @import("rhythm/conductor.zig");
 const utils = @import("utils.zig");
 
 pub fn audioThread(conductor: Conductor, start_tick: u64, audio_stop_flag: *bool) void {

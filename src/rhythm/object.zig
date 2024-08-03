@@ -3,7 +3,7 @@ const std = @import("std");
 const ScrollDirection = @import("../graphics.zig").ScrollDirection;
 
 const ChartType = @import("conductor.zig").ChartType;
-const State = @import("conductor.zig").Conductor.State;
+const State = @import("conductor.zig").State;
 
 const Renderer = @cImport({
     @cInclude("SDL2/SDL.h");

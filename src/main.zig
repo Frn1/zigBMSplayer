@@ -7,7 +7,7 @@ const gfx = @import("graphics.zig");
 const utils = @import("utils.zig");
 const audio = @import("audio.zig");
 
-const Conductor = @import("rhythm/conductor.zig").Conductor;
+const Conductor = @import("rhythm/conductor.zig");
 const ChartType = @import("rhythm/conductor.zig").ChartType;
 const Object = @import("rhythm/object.zig").Object;
 
