@@ -12,7 +12,7 @@ const ma = @cImport({
     @cInclude("miniaudio.h");
 });
 
-const Conductor = @import("rhythm/conductor.zig").Conductor;
+const Conductor = @import("rhythm/conductor.zig");
 const Object = @import("rhythm/object.zig").Object;
 const ScrollObject = @import("rhythm/objects/scroll.zig");
 const StopObject = @import("rhythm/objects/stop.zig");

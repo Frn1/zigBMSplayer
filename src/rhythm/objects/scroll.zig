@@ -5,7 +5,7 @@ const c = @import("../../consts.zig");
 
 const sdlAssert = @import("../../utils.zig").sdlAssert;
 
-const State = @import("../conductor.zig").Conductor.State;
+const State = @import("../conductor.zig").State;
 const Object = @import("../object.zig").Object;
 
 const Scroll = Object.Position;
