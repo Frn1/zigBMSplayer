@@ -239,16 +239,14 @@ pub fn main() !void {
         //     continue;
         // }
 
+        if (sdl.SDL_HasEvent(sdl.SDL_QUIT)) {
+            break :main_loop;
+        }
         // handle events
         var event: sdl.SDL_Event = undefined;
         while (sdl.SDL_PollEvent(&event) > 0) {
             switch (event.type) {
                 sdl.SDL_QUIT => break :main_loop,
-                sdl.SDL_KEYDOWN => switch (event.key.keysym.sym) {
-                    sdl.SDLK_UP => scroll_speed_mul += 0.1,
-                    sdl.SDLK_DOWN => scroll_speed_mul -= 0.1,
-                    else => {},
-                },
                 else => {},
             }
         }
