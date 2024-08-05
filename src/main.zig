@@ -6,6 +6,7 @@ const formats = @import("formats.zig");
 const gfx = @import("graphics.zig");
 const utils = @import("utils.zig");
 const audio = @import("audio.zig");
+const input = @import("input.zig");
 
 const Conductor = @import("rhythm/conductor.zig");
 const ChartType = @import("rhythm/conductor.zig").ChartType;
@@ -125,7 +126,7 @@ pub fn main() !void {
     try gfx.drawText("Miniaudio initialized", renderer, 0, 24 * 2, debug_font);
     sdl.SDL_RenderPresent(renderer);
 
-    var scroll_speed_mul: Object.Position = 2.0;
+    const scroll_speed_mul: Object.Position = 2.0;
     const scroll_direction: gfx.ScrollDirection = .Down;
 
     const args = try std.process.argsAlloc(loading_allocator);
@@ -230,6 +231,18 @@ pub fn main() !void {
     try gfx.drawText("Audio thread created", renderer, 0, 24 * 7, debug_font);
     sdl.SDL_RenderPresent(renderer);
 
+    var input_stop_flag = false;
+    const inputThread = try std.Thread.spawn(.{ .allocator = main_allocator }, input.inputThread, .{
+        conductor,
+        start_tick,
+        &audio_stop_flag,
+    });
+    defer inputThread.join();
+    defer input_stop_flag = true;
+
+    try gfx.drawText("Audio thread created", renderer, 0, 24 * 7, debug_font);
+    sdl.SDL_RenderPresent(renderer);
+
     try gfx.drawText("Initialization done!", renderer, 0, 24 * 5, debug_font);
     sdl.SDL_RenderPresent(renderer);
 
@@ -238,18 +251,6 @@ pub fn main() !void {
         // if (sdl.SDL_GetPerformanceCounter() - last_frame_end < sdl.SDL_GetPerformanceFrequency() / c.fps) {
         //     continue;
         // }
-
-        if (sdl.SDL_HasEvent(sdl.SDL_QUIT)) {
-            break :main_loop;
-        }
-        // handle events
-        var event: sdl.SDL_Event = undefined;
-        while (sdl.SDL_PollEvent(&event) > 0) {
-            switch (event.type) {
-                sdl.SDL_QUIT => break :main_loop,
-                else => {},
-            }
-        }
 
         // We dont care about "strictness" or "accuracy"
         // we just want something that runs quick lol

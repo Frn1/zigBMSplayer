@@ -33,12 +33,17 @@ fn destroy(object: Object, allocator: std.mem.Allocator) void {
 
 fn hit(
     object: Object,
-) void {
+    lane: Lane,
+) bool {
     const parameters = Object.castParameters(Parameters, object.parameters);
+    if (lane != parameters.lane) {
+        return false;
+    }
     if (parameters.sound != null) {
         _ = ma.ma_sound_seek_to_pcm_frame(parameters.sound, 0);
         _ = ma.ma_sound_start(parameters.sound);
     }
+    return true;
 }
 
 fn render(

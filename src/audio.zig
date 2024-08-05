@@ -37,12 +37,6 @@ pub fn audioThread(conductor: Conductor, start_tick: u64, audio_stop_flag: *bool
         const current_performance_ticks = sdl.SDL_GetPerformanceCounter() - start_tick;
         const current_seconds: f80 = @as(f80, @floatFromInt(current_performance_ticks)) / performance_frequency;
 
-        const state_before_update = state;
         state.update(conductor, current_seconds, true);
-
-        for (state_before_update.next_object_to_process..state.next_object_to_process) |i| {
-            const object = conductor.objects[i];
-            object.hit(object);
-        }
     }
 }

@@ -3,7 +3,8 @@ const std = @import("std");
 const ScrollDirection = @import("../graphics.zig").ScrollDirection;
 
 const ChartType = @import("conductor.zig").ChartType;
-const State = @import("conductor.zig").State;
+const State = @import("conductor.zig").Conductor.State;
+const Lane = @import("objects/note.zig").Lane;
 
 const Renderer = @cImport({
     @cInclude("SDL2/SDL.h");
@@ -13,7 +14,12 @@ const Renderer = @cImport({
 fn emptyDestroy(_: Object, _: std.mem.Allocator) void {}
 fn emptyProcess(_: Object, _: *State) void {}
 fn emptyProcessAudio(_: Object) void {}
-fn emptyHit(_: Object) void {}
+fn emptyHit(_: Object, _: Lane) bool {
+    return false;
+}
+fn emptyLongHit(_: Object, _: Lane) ?usize {
+    return null;
+}
 fn emptyRender(
     _: Object,
     _: Object.Position,
@@ -53,18 +59,21 @@ pub const Object = struct {
     /// while a BGM note object would do nothing in here (so it should be null).
     process: *const fn (object: @This(), state: *State) void = emptyProcess,
 
-    /// Called when running gameplay on the audio thread.
+    /// Called when running game play on the audio thread.
     /// Will run at the "perfect" time for the object.
     ///
     /// For example, a BPM object would do nothing in here (so it should be null),
     /// while a BGM note object would play their keysound.
     processAudio: *const fn (object: @This()) void = emptyProcessAudio,
 
-    /// Called when running gameplay.
-    /// Will run at the time the player hits this object.
-    hit: *const fn (
-        object: @This(),
-    ) void = emptyHit,
+    /// This function is used to judge notes.
+    /// It should return `true` when the note can be hit with that lane and `false` otherwise.
+    hit: *const fn (object: @This(), lane: Lane) bool = emptyHit,
+
+    /// This function is used to judge notes.
+    /// It should return the tail object index when the note
+    /// can be hit with that lane or `null` if thats not the case.
+    longHit: *const fn (object: @This(), lane: Lane) ?usize = emptyLongHit,
 
     /// Called when running gameplay.
     /// Will render the object on screen.
