@@ -231,23 +231,27 @@ pub fn main() !void {
     try gfx.drawText("Audio thread created", renderer, 0, 24 * 7, debug_font);
     sdl.SDL_RenderPresent(renderer);
 
+    var quit_flag = false;
     var input_stop_flag = false;
     const inputThread = try std.Thread.spawn(.{ .allocator = main_allocator }, input.inputThread, .{
-        conductor,
+        conductor.objects,
+        object_seconds,
+        .easy,
         start_tick,
-        &audio_stop_flag,
+        &input_stop_flag,
+        &quit_flag,
     });
-    defer inputThread.join();
+    _ = inputThread;
     defer input_stop_flag = true;
 
-    try gfx.drawText("Audio thread created", renderer, 0, 24 * 7, debug_font);
+    try gfx.drawText("Input thread created", renderer, 0, 24 * 8, debug_font);
     sdl.SDL_RenderPresent(renderer);
 
-    try gfx.drawText("Initialization done!", renderer, 0, 24 * 5, debug_font);
+    try gfx.drawText("Initialization done!", renderer, 0, 24 * 9, debug_font);
     sdl.SDL_RenderPresent(renderer);
 
     // Event loop
-    main_loop: while (true) {
+    while (quit_flag == false) {
         // if (sdl.SDL_GetPerformanceCounter() - last_frame_end < sdl.SDL_GetPerformanceFrequency() / c.fps) {
         //     continue;
         // }
@@ -255,6 +259,9 @@ pub fn main() !void {
         // We dont care about "strictness" or "accuracy"
         // we just want something that runs quick lol
         @setFloatMode(std.builtin.FloatMode.optimized);
+
+        // We need to poll an event to make it think the window is still responsive        
+        _ = sdl.SDL_PollEvent(null);
 
         var frame_arena = std.heap.ArenaAllocator.init(main_allocator);
         defer frame_arena.deinit();
@@ -275,7 +282,7 @@ pub fn main() !void {
                     }
                 }
             } else {
-                break :main_loop; // Quit the program (the outer loop)
+                // break :main_loop; // Quit the program (the outer loop)
             }
         }
 

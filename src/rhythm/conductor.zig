@@ -1,4 +1,4 @@
-const Conductor = @This();
+pub const Conductor = @This();
 
 const std = @import("std");
 

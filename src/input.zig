@@ -23,6 +23,7 @@ pub const Rating = enum {
     Good,
     Bad,
     Poor,
+    Miss,
 };
 
 const TimingWindow = struct { late: ?Object.Time, early: ?Object.Time };
@@ -64,53 +65,53 @@ fn getTimingWindowForRating(rating: Rating, rank: Rank) TimingWindow {
     };
 }
 
-const rating_process_order = .{ .PerfectGreat, .Great, .Good, .Bad, .Poor, .Miss };
+const rating_process_order: [5]Rating = .{ .PerfectGreat, .Great, .Good, .Bad, .Poor };
 
 fn processInput(
     current_time: Object.Time,
-    rank: Rank,
+    timing_windows: []const TimingWindow,
     lane: Lane,
-    objects: []Object,
-    object_times: []Object.Time,
-    last_pressed_index: *usize,
+    objects: []const Object,
+    object_seconds: []const Object.Time,
 ) ?Rating {
-    const rating_timing_windows = {
-        var output: []TimingWindow = .{undefined} ** rating_process_order.len;
-        for (rating_process_order, 0..) |rating, i| {
-            output[i] = getTimingWindowForRating(rating, rank);
+    for (object_seconds, objects) |obj_second, obj| {
+        if (obj.hit(obj, lane) == false) {
+            // Object is not hittable, move along...
+            continue;
         }
-        output;
-    };
-
-    return objects_loop: for (object_times[last_pressed_index..], last_pressed_index..) |object_time, i| {
-        const last_timing_window = rating_timing_windows[rating_timing_windows.len - 1];
-        if (last_timing_window.early != null) {
-            if (object_time - current_time > last_timing_window.early.?) {
-                break :objects_loop null;
+        for (timing_windows, rating_process_order) |timing_window, rating| {
+            if (current_time < obj_second and timing_window.early != null) {
+                // hit is early
+                const time_difference = obj_second - current_time;
+                if (time_difference <= timing_window.early.?) {
+                    std.debug.print("{d:.5} {d:.5} {}\n", .{obj_second, current_time, rating});
+                    return rating;
+                }
+            } else if (current_time >= obj_second and timing_window.late != null) {
+                // hit is late
+                const time_difference = current_time - obj_second;
+                if (time_difference <= timing_window.late.?) {
+                    std.debug.print("{d:.5} {d:.5} {}\n", .{obj_second, current_time, rating});
+                    return rating;
+                }
             }
+            // If we dont return, that means the object can't be hit
         }
+        const last_timing_window = timing_windows[timing_windows.len - 1];
         if (last_timing_window.late != null) {
-            if (current_time - object_time > last_timing_window.late.?) {
-                break :objects_loop .Miss;
+            const time_difference = current_time - obj_second;
+            if (time_difference > last_timing_window.late.?) {
+                std.debug.print("{d:.5} {d:.5} {}\n", .{obj_second, current_time, Rating.Miss});
+                return .Miss; // Note has gotten outside of the hittable time range without being pressed
             }
+        } else if (current_time < obj_second) {
+            std.debug.print("{d:.5} {d:.5} {}\n", .{obj_second, current_time, Rating.Miss});
+            return .Miss; // Same as above
         }
-        for (rating_process_order, rating_timing_windows) |rating, timing_window| {
-            if (objects[i].hit(lane)) {
-                if (timing_window.early != null) {
-                    if (object_time - current_time < timing_window.early.?) {
-                        last_pressed_index.* = i;
-                        break :objects_loop rating;
-                    }
-                }
-                if (timing_window.late != null) {
-                    if (current_time - object_time < timing_window.late.?) {
-                        last_pressed_index.* = i;
-                        break :objects_loop rating;
-                    }
-                }
-            }
-        }
-    };
+    }
+    // Way too early to hit yet
+    std.debug.print("{d:.5} null\n", .{current_time});
+    return null;
 }
 
 fn playNextKeysound(
@@ -127,34 +128,94 @@ fn playNextKeysound(
 
 pub fn inputThread(
     objects: []Object,
-    object_times: []Object.Time,
+    object_seconds: []Object.Time,
     rank: Rank,
     start_tick: u64,
     input_stop_flag: *bool,
     quit_flag: *bool,
 ) void {
-    _ = object_times;
-    _ = rank;
     // how many ticks are in a second
-    const performance_frequency: f80 = @floatFromInt(sdl.SDL_GetPerformanceFrequency());
+    const performance_frequency: Object.Time = @floatFromInt(sdl.SDL_GetPerformanceFrequency());
 
     const last_pressed_index = 0;
+    _ = last_pressed_index;
 
-    const current_performance_ticks = sdl.SDL_GetPerformanceCounter() - start_tick;
-    const current_time: f80 = @as(f80, @floatFromInt(current_performance_ticks)) / performance_frequency;
-    _ = current_time;
+    const rating_timing_windows = a: {
+        var output: [5]TimingWindow = .{undefined} ** rating_process_order.len;
+        for (rating_process_order, 0..) |rating, i| {
+            output[i] = getTimingWindowForRating(rating, rank);
+        }
+        break :a output;
+    };
 
-    while (input_stop_flag == false) {
+    while (input_stop_flag.* == false) {
+        const current_performance_ticks = sdl.SDL_GetPerformanceCounter() - start_tick;
+        const current_time: Object.Time = @as(Object.Time, @floatFromInt(current_performance_ticks)) / performance_frequency;
+
         // handle events
         var event: sdl.SDL_Event = undefined;
         while (sdl.SDL_PollEvent(&event) > 0) {
             switch (event.type) {
                 sdl.SDL_QUIT => {
                     quit_flag.* = true;
-                    return;
                 },
                 sdl.SDL_KEYDOWN => switch (event.key.keysym.sym) {
-                    sdl.SDLK_z => playNextKeysound(Lane.White1_P1, objects, last_pressed_index),
+                    sdl.SDLK_LSHIFT, sdl.SDLK_LCTRL => _ = processInput(
+                        current_time,
+                        &rating_timing_windows,
+                        .Scratch_P1,
+                        objects,
+                        object_seconds,
+                    ),
+                    sdl.SDLK_z => _ = processInput(
+                        current_time,
+                        &rating_timing_windows,
+                        .White1_P1,
+                        objects,
+                        object_seconds,
+                    ),
+                    sdl.SDLK_s => _ = processInput(
+                        current_time,
+                        &rating_timing_windows,
+                        .Black1_P1,
+                        objects,
+                        object_seconds,
+                    ),
+                    sdl.SDLK_x => _ = processInput(
+                        current_time,
+                        &rating_timing_windows,
+                        .White2_P1,
+                        objects,
+                        object_seconds,
+                    ),
+                    sdl.SDLK_d => _ = processInput(
+                        current_time,
+                        &rating_timing_windows,
+                        .Black2_P1,
+                        objects,
+                        object_seconds,
+                    ),
+                    sdl.SDLK_c => _ = processInput(
+                        current_time,
+                        &rating_timing_windows,
+                        .White3_P1,
+                        objects,
+                        object_seconds,
+                    ),
+                    sdl.SDLK_f => _ = processInput(
+                        current_time,
+                        &rating_timing_windows,
+                        .Black3_P1,
+                        objects,
+                        object_seconds,
+                    ),
+                    sdl.SDLK_v => _ = processInput(
+                        current_time,
+                        &rating_timing_windows,
+                        .White4_P1,
+                        objects,
+                        object_seconds,
+                    ),
                     else => {},
                 },
                 else => {},
