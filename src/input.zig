@@ -73,8 +73,10 @@ fn processInput(
     lane: Lane,
     objects: []const Object,
     object_seconds: []const Object.Time,
+    last_pressed_indexes: []usize,
 ) ?Rating {
-    for (object_seconds, objects) |obj_second, obj| {
+    const last_pressed_index = last_pressed_indexes[@intFromEnum(lane)];
+    for (object_seconds[last_pressed_index..], objects[last_pressed_index..], last_pressed_index..) |obj_second, obj, i| {
         if (obj.hit(obj, lane) == false) {
             // Object is not hittable, move along...
             continue;
@@ -84,14 +86,16 @@ fn processInput(
                 // hit is early
                 const time_difference = obj_second - current_time;
                 if (time_difference <= timing_window.early.?) {
-                    std.debug.print("{d:.5} {d:.5} {}\n", .{obj_second, current_time, rating});
+                    last_pressed_indexes[@intFromEnum(lane)] = i;
+                    std.debug.print("{d:.5} {d:.5} {}\n", .{ obj_second, current_time, rating });
                     return rating;
                 }
             } else if (current_time >= obj_second and timing_window.late != null) {
                 // hit is late
                 const time_difference = current_time - obj_second;
                 if (time_difference <= timing_window.late.?) {
-                    std.debug.print("{d:.5} {d:.5} {}\n", .{obj_second, current_time, rating});
+                    last_pressed_indexes[@intFromEnum(lane)] = i;
+                    std.debug.print("{d:.5} {d:.5} {}\n", .{ obj_second, current_time, rating });
                     return rating;
                 }
             }
@@ -101,11 +105,13 @@ fn processInput(
         if (last_timing_window.late != null) {
             const time_difference = current_time - obj_second;
             if (time_difference > last_timing_window.late.?) {
-                std.debug.print("{d:.5} {d:.5} {}\n", .{obj_second, current_time, Rating.Miss});
+                last_pressed_indexes[@intFromEnum(lane)] = i;
+                std.debug.print("{d:.5} {d:.5} {}\n", .{ obj_second, current_time, Rating.Miss });
                 return .Miss; // Note has gotten outside of the hittable time range without being pressed
             }
         } else if (current_time < obj_second) {
-            std.debug.print("{d:.5} {d:.5} {}\n", .{obj_second, current_time, Rating.Miss});
+            last_pressed_indexes[@intFromEnum(lane)] = i;
+            std.debug.print("{d:.5} {d:.5} {}\n", .{ obj_second, current_time, Rating.Miss });
             return .Miss; // Same as above
         }
     }
@@ -128,17 +134,18 @@ fn playNextKeysound(
 
 pub fn inputThread(
     objects: []Object,
+    ratings: []Rating,
     object_seconds: []Object.Time,
     rank: Rank,
     start_tick: u64,
     input_stop_flag: *bool,
     quit_flag: *bool,
-) void {
+) !void {
     // how many ticks are in a second
     const performance_frequency: Object.Time = @floatFromInt(sdl.SDL_GetPerformanceFrequency());
 
-    const last_pressed_index = 0;
-    _ = last_pressed_index;
+    var last_pressed_indexes: [@typeInfo(Lane).Enum.fields.len]usize = .{0} ** @typeInfo(Lane).Enum.fields.len;
+    var ratings: []usize = try allocator.alloc(Rating, objects.len);
 
     const rating_timing_windows = a: {
         var output: [5]TimingWindow = .{undefined} ** rating_process_order.len;
@@ -166,6 +173,7 @@ pub fn inputThread(
                         .Scratch_P1,
                         objects,
                         object_seconds,
+                        &last_pressed_indexes,
                     ),
                     sdl.SDLK_z => _ = processInput(
                         current_time,
@@ -173,6 +181,7 @@ pub fn inputThread(
                         .White1_P1,
                         objects,
                         object_seconds,
+                        &last_pressed_indexes,
                     ),
                     sdl.SDLK_s => _ = processInput(
                         current_time,
@@ -180,6 +189,7 @@ pub fn inputThread(
                         .Black1_P1,
                         objects,
                         object_seconds,
+                        &last_pressed_indexes,
                     ),
                     sdl.SDLK_x => _ = processInput(
                         current_time,
@@ -187,6 +197,7 @@ pub fn inputThread(
                         .White2_P1,
                         objects,
                         object_seconds,
+                        &last_pressed_indexes,
                     ),
                     sdl.SDLK_d => _ = processInput(
                         current_time,
@@ -194,6 +205,7 @@ pub fn inputThread(
                         .Black2_P1,
                         objects,
                         object_seconds,
+                        &last_pressed_indexes,
                     ),
                     sdl.SDLK_c => _ = processInput(
                         current_time,
@@ -201,6 +213,7 @@ pub fn inputThread(
                         .White3_P1,
                         objects,
                         object_seconds,
+                        &last_pressed_indexes,
                     ),
                     sdl.SDLK_f => _ = processInput(
                         current_time,
@@ -208,6 +221,7 @@ pub fn inputThread(
                         .Black3_P1,
                         objects,
                         object_seconds,
+                        &last_pressed_indexes,
                     ),
                     sdl.SDLK_v => _ = processInput(
                         current_time,
@@ -215,6 +229,7 @@ pub fn inputThread(
                         .White4_P1,
                         objects,
                         object_seconds,
+                        &last_pressed_indexes,
                     ),
                     else => {},
                 },
