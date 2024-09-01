@@ -8,6 +8,7 @@ const utils = @import("utils.zig");
 const audio = @import("audio.zig");
 const input = @import("input.zig");
 
+const Judgement = @import("input.zig").Judgement;
 const Conductor = @import("rhythm/conductor.zig");
 const ChartType = @import("rhythm/conductor.zig").ChartType;
 const Object = @import("rhythm/object.zig").Object;
@@ -231,10 +232,17 @@ pub fn main() !void {
     try gfx.drawText("Audio thread created", renderer, 0, 24 * 7, debug_font);
     sdl.SDL_RenderPresent(renderer);
 
+    const judgements = try main_allocator.alloc(
+        ?Judgement,
+        conductor.objects.len,
+    );
+    defer main_allocator.free(judgements);
     var quit_flag = false;
     var input_stop_flag = false;
     const inputThread = try std.Thread.spawn(.{ .allocator = main_allocator }, input.inputThread, .{
+        main_allocator,
         conductor.objects,
+        judgements,
         object_seconds,
         .easy,
         start_tick,
@@ -260,7 +268,7 @@ pub fn main() !void {
         // we just want something that runs quick lol
         @setFloatMode(std.builtin.FloatMode.optimized);
 
-        // We need to poll an event to make it think the window is still responsive        
+        // We need to poll an event to make it think the window is still responsive
         _ = sdl.SDL_PollEvent(null);
 
         var frame_arena = std.heap.ArenaAllocator.init(main_allocator);

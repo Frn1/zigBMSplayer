@@ -14,7 +14,8 @@ const Renderer = @cImport({
 fn emptyDestroy(_: Object, _: std.mem.Allocator) void {}
 fn emptyProcess(_: Object, _: *State) void {}
 fn emptyProcessAudio(_: Object) void {}
-fn emptyHit(_: Object, _: Lane) bool {
+fn emptyHit(_: Object) void {}
+fn emptyCanHit(_: Object, _: Lane) bool {
     return false;
 }
 fn emptyLongHit(_: Object, _: Lane) ?usize {
@@ -50,37 +51,43 @@ pub const Object = struct {
     /// and everything created in init
     ///
     /// Called when exiting
-    destroy: *const fn (object: @This(), allocator: std.mem.Allocator) void = &emptyDestroy,
+    destroy: *const fn (self: @This(), allocator: std.mem.Allocator) void = &emptyDestroy,
 
     /// Called when processing, loading and running gameplay.
     /// Will run at the "perfect" time for the object.
     ///
     /// For example, a BPM object would change the bpm in here,
     /// while a BGM note object would do nothing in here (so it should be null).
-    process: *const fn (object: @This(), state: *State) void = emptyProcess,
+    process: *const fn (self: @This(), state: *State) void = emptyProcess,
 
     /// Called when running game play on the audio thread.
     /// Will run at the "perfect" time for the object.
     ///
     /// For example, a BPM object would do nothing in here (so it should be null),
     /// while a BGM note object would play their keysound.
-    processAudio: *const fn (object: @This()) void = emptyProcessAudio,
+    processAudio: *const fn (self: @This()) void = emptyProcessAudio,
 
     /// This function is used to judge notes.
-    /// It should return `true` when the note can be hit with that lane and `false` otherwise.
-    hit: *const fn (object: @This(), lane: Lane) bool = emptyHit,
+    ///
+    /// It should return true when an object can be hit with that lane, and false when it cant
+    hit: *const fn (self: @This()) void = emptyHit,
+
+    /// This function is used to judge notes.
+    ///
+    /// It should return true when an object can be hit with that lane, and false when it cant
+    canHit: *const fn (self: @This(), lane: Lane) bool = emptyCanHit,
 
     /// This function is used to judge notes.
     /// It should return the tail object index when the note
     /// can be hit with that lane or `null` if thats not the case.
-    longHit: *const fn (object: @This(), lane: Lane) ?usize = emptyLongHit,
+    longHit: *const fn (self: @This(), lane: Lane) ?usize = emptyLongHit,
 
     /// Called when running gameplay.
     /// Will render the object on screen.
     // TODO: Make this better probably
     render: *const fn (
-        object: @This(),
-        object_position: Object.Position,
+        self: @This(),
+        position: Object.Position,
         current_position: Object.Position,
         all_positions: []Object.Position,
         chart_type: ChartType,

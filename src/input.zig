@@ -17,7 +17,7 @@ const Rank = @import("rhythm/conductor.zig").Rank;
 const Object = @import("rhythm/object.zig").Object;
 const Lane = @import("rhythm/objects/note.zig").Lane;
 
-pub const Rating = enum {
+pub const Judgement = enum {
     PerfectGreat,
     Great,
     Good,
@@ -28,9 +28,9 @@ pub const Rating = enum {
 
 const TimingWindow = struct { late: ?Object.Time, early: ?Object.Time };
 
-fn getTimingWindowForRating(rating: Rating, rank: Rank) TimingWindow {
+fn getTimingWindowForJudgement(judgement: Judgement, rank: Rank) TimingWindow {
     return switch (rank) {
-        .easy => switch (rating) {
+        .easy => switch (judgement) {
             .PerfectGreat => .{ .late = 0.021, .early = 0.021 },
             .Great => .{ .late = 0.060, .early = 0.060 },
             .Good => .{ .late = 0.120, .early = 0.120 },
@@ -38,7 +38,7 @@ fn getTimingWindowForRating(rating: Rating, rank: Rank) TimingWindow {
             .Poor => .{ .late = 1.000, .early = null }, // Excessive poors can only occur later, never earlier
             .Miss => .{ .late = null, .early = null },
         },
-        .normal => switch (rating) {
+        .normal => switch (judgement) {
             .PerfectGreat => .{ .late = 0.018, .early = 0.018 },
             .Great => .{ .late = 0.040, .early = 0.040 },
             .Good => .{ .late = 0.100, .early = 0.100 },
@@ -46,7 +46,7 @@ fn getTimingWindowForRating(rating: Rating, rank: Rank) TimingWindow {
             .Poor => .{ .late = 1.000, .early = null },
             .Miss => .{ .late = null, .early = null },
         },
-        .hard => switch (rating) {
+        .hard => switch (judgement) {
             .PerfectGreat => .{ .late = 0.015, .early = 0.015 },
             .Great => .{ .late = 0.030, .early = 0.030 },
             .Good => .{ .late = 0.060, .early = 0.060 },
@@ -54,7 +54,7 @@ fn getTimingWindowForRating(rating: Rating, rank: Rank) TimingWindow {
             .Poor => .{ .late = 1.000, .early = null },
             .Miss => .{ .late = null, .early = null },
         },
-        .very_hard => switch (rating) {
+        .very_hard => switch (judgement) {
             .PerfectGreat => .{ .late = 0.008, .early = 0.008 },
             .Great => .{ .late = 0.024, .early = 0.024 },
             .Good => .{ .late = 0.040, .early = 0.040 },
@@ -65,77 +65,148 @@ fn getTimingWindowForRating(rating: Rating, rank: Rank) TimingWindow {
     };
 }
 
-const rating_process_order: [5]Rating = .{ .PerfectGreat, .Great, .Good, .Bad, .Poor };
-
-fn processInput(
-    current_time: Object.Time,
-    timing_windows: []const TimingWindow,
-    lane: Lane,
-    objects: []const Object,
-    object_seconds: []const Object.Time,
-    last_pressed_indexes: []usize,
-) ?Rating {
-    const last_pressed_index = last_pressed_indexes[@intFromEnum(lane)];
-    for (object_seconds[last_pressed_index..], objects[last_pressed_index..], last_pressed_index..) |obj_second, obj, i| {
-        if (obj.hit(obj, lane) == false) {
-            // Object is not hittable, move along...
-            continue;
-        }
-        for (timing_windows, rating_process_order) |timing_window, rating| {
-            if (current_time < obj_second and timing_window.early != null) {
-                // hit is early
-                const time_difference = obj_second - current_time;
-                if (time_difference <= timing_window.early.?) {
-                    last_pressed_indexes[@intFromEnum(lane)] = i;
-                    std.debug.print("{d:.5} {d:.5} {}\n", .{ obj_second, current_time, rating });
-                    return rating;
-                }
-            } else if (current_time >= obj_second and timing_window.late != null) {
-                // hit is late
-                const time_difference = current_time - obj_second;
-                if (time_difference <= timing_window.late.?) {
-                    last_pressed_indexes[@intFromEnum(lane)] = i;
-                    std.debug.print("{d:.5} {d:.5} {}\n", .{ obj_second, current_time, rating });
-                    return rating;
-                }
-            }
-            // If we dont return, that means the object can't be hit
-        }
-        const last_timing_window = timing_windows[timing_windows.len - 1];
-        if (last_timing_window.late != null) {
-            const time_difference = current_time - obj_second;
-            if (time_difference > last_timing_window.late.?) {
-                last_pressed_indexes[@intFromEnum(lane)] = i;
-                std.debug.print("{d:.5} {d:.5} {}\n", .{ obj_second, current_time, Rating.Miss });
-                return .Miss; // Note has gotten outside of the hittable time range without being pressed
-            }
-        } else if (current_time < obj_second) {
-            last_pressed_indexes[@intFromEnum(lane)] = i;
-            std.debug.print("{d:.5} {d:.5} {}\n", .{ obj_second, current_time, Rating.Miss });
-            return .Miss; // Same as above
-        }
-    }
-    // Way too early to hit yet
-    std.debug.print("{d:.5} null\n", .{current_time});
-    return null;
-}
+const judgment_process_order: [5]Judgement = .{ .PerfectGreat, .Great, .Good, .Bad, .Poor };
 
 fn playNextKeysound(
     lane: Lane,
-    objects: []Object,
+    objects: []const Object,
     last_pressed_index: usize,
 ) void {
     for (last_pressed_index..objects.len) |i| {
-        if (objects[i].hit(lane)) {
+        if (objects[i].canHit(lane)) {
+            break;
+        }
+    }
+}
+
+fn pressLane(
+    arena_allocator: std.mem.Allocator,
+    lane: Lane,
+    objects: []const Object,
+    object_seconds: []const Object.Time,
+    current_time: Object.Time,
+    timing_windows: []const TimingWindow,
+    judgements: []?Judgement,
+) !void {
+    var hittable_indexes = try arena_allocator.alloc(usize, 0);
+
+    get_objects: for (
+        objects,
+        object_seconds,
+        0..,
+    ) |
+        object,
+        time,
+        index,
+    | {
+        if (object.canHit(object, lane) == false) {
+            continue;
+        }
+        for (timing_windows) |timing_window| {
+            if (timing_window.early != null and
+                time - current_time <= timing_window.early.? and
+                time - current_time >= 0)
+            {
+                // Object is early
+                hittable_indexes = try arena_allocator.realloc(
+                    hittable_indexes,
+                    hittable_indexes.len + 1,
+                );
+                hittable_indexes[hittable_indexes.len - 1] = index;
+                continue :get_objects;
+            } else if (timing_window.late != null and
+                current_time - time <= timing_window.late.? and
+                current_time - time >= 0)
+            {
+                // Object is late
+                hittable_indexes = try arena_allocator.realloc(
+                    hittable_indexes,
+                    hittable_indexes.len + 1,
+                );
+                hittable_indexes[hittable_indexes.len - 1] = index;
+                continue :get_objects;
+            } else if ((timing_window.early != null and
+                time - current_time > timing_window.early.?) and
+                (timing_window.late != null and
+                current_time - time > timing_window.late.?))
+            {
+                break :get_objects;
+            }
+        }
+    }
+
+    for (hittable_indexes) |index| {
+        if (judgements[index] != null) {
+            const time = object_seconds[index];
+
+            for (judgment_process_order, timing_windows) |
+                judgement,
+                timing_window,
+            | {
+                if (timing_window.early != null and
+                    time - current_time <= timing_window.early.?)
+                {
+                    // Object is early
+                    judgements[index] = judgement;
+                } else if (timing_window.late != null and
+                    current_time - time <= timing_window.late.?)
+                {
+                    // Object is late
+                    judgements[index] = judgement;
+                }
+            }
+            objects[index].hit(objects[index]);
+            return;
+        }
+    }
+
+    // try to rehit notes
+    for (hittable_indexes) |index| {
+        const time = object_seconds[index];
+
+        for (judgment_process_order, timing_windows) |
+            judgement,
+            timing_window,
+        | {
+            if (timing_window.early != null and
+                time - current_time <= timing_window.early.?)
+            {
+                // Object is early
+                judgements[index] = judgement;
+            } else if (timing_window.late != null and
+                current_time - time <= timing_window.late.?)
+            {
+                // Object is late
+                judgements[index] = judgement;
+            }
+        }
+        objects[index].hit(objects[index]);
+        return;
+    }
+
+    for (
+        objects,
+        object_seconds,
+    ) |
+        object,
+        time,
+    | {
+        if (object.canHit(object, lane) == false) {
+            continue;
+        }
+
+        if (time > current_time) {
+            object.hit(object);
             break;
         }
     }
 }
 
 pub fn inputThread(
-    objects: []Object,
-    ratings: []Rating,
-    object_seconds: []Object.Time,
+    allocator: std.mem.Allocator,
+    objects: []const Object,
+    judgements: []?Judgement,
+    object_seconds: []const Object.Time,
     rank: Rank,
     start_tick: u64,
     input_stop_flag: *bool,
@@ -144,20 +215,28 @@ pub fn inputThread(
     // how many ticks are in a second
     const performance_frequency: Object.Time = @floatFromInt(sdl.SDL_GetPerformanceFrequency());
 
-    var last_pressed_indexes: [@typeInfo(Lane).Enum.fields.len]usize = .{0} ** @typeInfo(Lane).Enum.fields.len;
-    var ratings: []usize = try allocator.alloc(Rating, objects.len);
+    // var last_pressed_indexes: [@typeInfo(Lane).Enum.fields.len]usize =
+    //     .{0} ** @typeInfo(Lane).Enum.fields.len;
 
-    const rating_timing_windows = a: {
-        var output: [5]TimingWindow = .{undefined} ** rating_process_order.len;
-        for (rating_process_order, 0..) |rating, i| {
-            output[i] = getTimingWindowForRating(rating, rank);
+    const judgement_timing_windows = a: {
+        var output: [judgment_process_order.len]TimingWindow = .{undefined} ** judgment_process_order.len;
+        for (judgment_process_order, 0..) |judgement, i| {
+            output[i] = getTimingWindowForJudgement(judgement, rank);
         }
         break :a output;
     };
 
     while (input_stop_flag.* == false) {
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+
+        const arena_allocator = arena.allocator();
+
         const current_performance_ticks = sdl.SDL_GetPerformanceCounter() - start_tick;
-        const current_time: Object.Time = @as(Object.Time, @floatFromInt(current_performance_ticks)) / performance_frequency;
+        const current_time: Object.Time = @as(
+            Object.Time,
+            @floatFromInt(current_performance_ticks),
+        ) / performance_frequency;
 
         // handle events
         var event: sdl.SDL_Event = undefined;
@@ -167,69 +246,77 @@ pub fn inputThread(
                     quit_flag.* = true;
                 },
                 sdl.SDL_KEYDOWN => switch (event.key.keysym.sym) {
-                    sdl.SDLK_LSHIFT, sdl.SDLK_LCTRL => _ = processInput(
-                        current_time,
-                        &rating_timing_windows,
-                        .Scratch_P1,
+                    sdl.SDLK_LSHIFT, sdl.SDLK_LCTRL => try pressLane(
+                        arena_allocator,
+                        Lane.Scratch_P1,
                         objects,
                         object_seconds,
-                        &last_pressed_indexes,
+                        current_time,
+                        &judgement_timing_windows,
+                        judgements,
                     ),
-                    sdl.SDLK_z => _ = processInput(
-                        current_time,
-                        &rating_timing_windows,
-                        .White1_P1,
+                    sdl.SDLK_z => try pressLane(
+                        arena_allocator,
+                        Lane.White1_P1,
                         objects,
                         object_seconds,
-                        &last_pressed_indexes,
+                        current_time,
+                        &judgement_timing_windows,
+                        judgements,
                     ),
-                    sdl.SDLK_s => _ = processInput(
-                        current_time,
-                        &rating_timing_windows,
-                        .Black1_P1,
+                    sdl.SDLK_s => try pressLane(
+                        arena_allocator,
+                        Lane.Black1_P1,
                         objects,
                         object_seconds,
-                        &last_pressed_indexes,
+                        current_time,
+                        &judgement_timing_windows,
+                        judgements,
                     ),
-                    sdl.SDLK_x => _ = processInput(
-                        current_time,
-                        &rating_timing_windows,
-                        .White2_P1,
+                    sdl.SDLK_x => try pressLane(
+                        arena_allocator,
+                        Lane.White2_P1,
                         objects,
                         object_seconds,
-                        &last_pressed_indexes,
+                        current_time,
+                        &judgement_timing_windows,
+                        judgements,
                     ),
-                    sdl.SDLK_d => _ = processInput(
-                        current_time,
-                        &rating_timing_windows,
-                        .Black2_P1,
+                    sdl.SDLK_d => try pressLane(
+                        arena_allocator,
+                        Lane.Black2_P1,
                         objects,
                         object_seconds,
-                        &last_pressed_indexes,
+                        current_time,
+                        &judgement_timing_windows,
+                        judgements,
                     ),
-                    sdl.SDLK_c => _ = processInput(
-                        current_time,
-                        &rating_timing_windows,
-                        .White3_P1,
+                    sdl.SDLK_c => try pressLane(
+                        arena_allocator,
+                        Lane.White3_P1,
                         objects,
                         object_seconds,
-                        &last_pressed_indexes,
+                        current_time,
+                        &judgement_timing_windows,
+                        judgements,
                     ),
-                    sdl.SDLK_f => _ = processInput(
-                        current_time,
-                        &rating_timing_windows,
-                        .Black3_P1,
+                    sdl.SDLK_f => try pressLane(
+                        arena_allocator,
+                        Lane.Black3_P1,
                         objects,
                         object_seconds,
-                        &last_pressed_indexes,
+                        current_time,
+                        &judgement_timing_windows,
+                        judgements,
                     ),
-                    sdl.SDLK_v => _ = processInput(
-                        current_time,
-                        &rating_timing_windows,
-                        .White4_P1,
+                    sdl.SDLK_v => try pressLane(
+                        arena_allocator,
+                        Lane.White4_P1,
                         objects,
                         object_seconds,
-                        &last_pressed_indexes,
+                        current_time,
+                        &judgement_timing_windows,
+                        judgements,
                     ),
                     else => {},
                 },

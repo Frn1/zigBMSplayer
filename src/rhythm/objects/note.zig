@@ -50,7 +50,7 @@ fn destroy(object: Object, allocator: std.mem.Allocator) void {
     allocator.destroy(Object.castParameters(Parameters, object.parameters));
 }
 
-fn hit(
+fn canHit(
     object: Object,
     lane: Lane,
 ) bool {
@@ -58,11 +58,17 @@ fn hit(
     if (lane != parameters.lane) {
         return false;
     }
+    return true;
+}
+
+fn hit(
+    object: Object,
+) void {
+    const parameters = Object.castParameters(Parameters, object.parameters);
     if (parameters.sound != null) {
         _ = ma.ma_sound_seek_to_pcm_frame(parameters.sound, 0);
         _ = ma.ma_sound_start(parameters.sound);
     }
-    return true;
 }
 
 fn render(
@@ -110,6 +116,7 @@ pub fn create(allocator: std.mem.Allocator, beat: Object.Time, lane: Lane, sound
         .destroy = destroy,
         .render = render,
         .hit = hit,
+        .canHit = canHit,
     };
     object.parameters = @ptrCast(try allocator.create(Parameters));
     const params = Object.castParameters(Parameters, object.parameters);
