@@ -16,6 +16,7 @@ const Conductor = @import("rhythm/conductor.zig");
 const Rank = @import("rhythm/conductor.zig").Rank;
 const Object = @import("rhythm/object.zig").Object;
 const Lane = @import("rhythm/objects/note.zig").Lane;
+const ScrollDirection = @import("graphics.zig").ScrollDirection;
 
 pub const Judgement = enum {
     PerfectGreat,
@@ -209,6 +210,8 @@ pub fn inputThread(
     object_seconds: []const Object.Time,
     rank: Rank,
     start_tick: u64,
+    scroll_speed_mul: *Object.Position,
+    scroll_direction: *ScrollDirection,
     input_stop_flag: *bool,
     quit_flag: *bool,
 ) !void {
@@ -246,6 +249,12 @@ pub fn inputThread(
                     quit_flag.* = true;
                 },
                 sdl.SDL_KEYDOWN => switch (event.key.keysym.sym) {
+                    sdl.SDLK_1 => scroll_speed_mul.* -= 0.1,
+                    sdl.SDLK_2 => scroll_speed_mul.* += 0.1,
+                    sdl.SDLK_3 => scroll_direction.* = switch (scroll_direction.*) {
+                        .Down => .Up,
+                        .Up => .Down,
+                    },
                     sdl.SDLK_LSHIFT, sdl.SDLK_LCTRL => try pressLane(
                         arena_allocator,
                         Lane.Scratch_P1,

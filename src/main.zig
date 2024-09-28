@@ -127,8 +127,8 @@ pub fn main() !void {
     try gfx.drawText("Miniaudio initialized", renderer, 0, 24 * 2, debug_font);
     sdl.SDL_RenderPresent(renderer);
 
-    const scroll_speed_mul: Object.Position = 2.0;
-    const scroll_direction: gfx.ScrollDirection = .Down;
+    var scroll_speed_mul: Object.Position = 2.0;
+    var scroll_direction: gfx.ScrollDirection = .Down;
 
     const args = try std.process.argsAlloc(loading_allocator);
     if (args.len < 2) {
@@ -221,11 +221,15 @@ pub fn main() !void {
     var last_frame_end = sdl.SDL_GetPerformanceCounter();
 
     var audio_stop_flag = false;
-    const audioThread = try std.Thread.spawn(.{ .allocator = main_allocator }, audio.audioThread, .{
-        conductor,
-        start_tick,
-        &audio_stop_flag,
-    });
+    const audioThread = try std.Thread.spawn(
+        .{ .allocator = main_allocator },
+        audio.audioThread,
+        .{
+            conductor,
+            start_tick,
+            &audio_stop_flag,
+        },
+    );
     defer audioThread.join();
     defer audio_stop_flag = true;
 
@@ -239,16 +243,22 @@ pub fn main() !void {
     defer main_allocator.free(judgements);
     var quit_flag = false;
     var input_stop_flag = false;
-    const inputThread = try std.Thread.spawn(.{ .allocator = main_allocator }, input.inputThread, .{
-        main_allocator,
-        conductor.objects,
-        judgements,
-        object_seconds,
-        .easy,
-        start_tick,
-        &input_stop_flag,
-        &quit_flag,
-    });
+    const inputThread = try std.Thread.spawn(
+        .{ .allocator = main_allocator },
+        input.inputThread,
+        .{
+            main_allocator,
+            conductor.objects,
+            judgements,
+            object_seconds,
+            .easy,
+            start_tick,
+            &scroll_speed_mul,
+            &scroll_direction,
+            &input_stop_flag,
+            &quit_flag,
+        },
+    );
     _ = inputThread;
     defer input_stop_flag = true;
 
@@ -290,7 +300,7 @@ pub fn main() !void {
                     }
                 }
             } else {
-                // break :main_loop; // Quit the program (the outer loop)
+                quit_flag = true; // Quit the program (the outer loop)
             }
         }
 
@@ -328,7 +338,10 @@ pub fn main() !void {
 
         try gfx.drawText(text, renderer, 0, 24 * 0, debug_font);
 
-        _ = try std.fmt.bufPrintZ(text, "P  {d:.3}  x{d:.3}", .{ current_position, state.scroll_mul });
+        _ = try std.fmt.bufPrintZ(text, "P   {d:.3}  x{d:.3}", .{
+            current_position,
+            state.scroll_mul,
+        });
         try gfx.drawText(text, renderer, 0, 24 * 1, debug_font);
 
         _ = try std.fmt.bufPrintZ(text, "FPS {d:.3}", .{
@@ -339,7 +352,13 @@ pub fn main() !void {
         });
         try gfx.drawText(text, renderer, 0, 24 * 2, debug_font);
 
-        _ = try std.fmt.bufPrintZ(text, "SC  {d:.1}", .{scroll_speed_mul});
+        _ = try std.fmt.bufPrintZ(text, "SC  {d:.1}     {s}scroll", .{
+            scroll_speed_mul,
+            switch (scroll_direction) {
+                .Up => "Up",
+                .Down => "Down",
+            },
+        });
         try gfx.drawText(text, renderer, 0, 24 * 3, debug_font);
     }
 }

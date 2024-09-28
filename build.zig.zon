@@ -13,6 +13,10 @@
             .url = "https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.22.0/SDL2_ttf-devel-2.22.0-mingw.tar.gz",
             .hash = "12200686597ee80c630f310207180a969bc35929dc60c7b4250860c77111c08ed176",
         },
+        .@"rhythm-engine" = .{
+            .url = "https://github.com/Frn1/rhythm_engine/archive/2f78dea92f24feb9db5a5bc049cae764ee09c466.tar.gz",
+            .hash = "1220938a934b16553a5b5947461f9e6c5cd810fbf98618deb0decf7769d183fb452e",
+        },
     },
     .paths = .{
         // This makes *all* files, recursively, included in this package. It is generally
